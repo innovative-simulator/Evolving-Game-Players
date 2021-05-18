@@ -54,7 +54,7 @@ to setup
       set plabel-color black
     ]
   ]
-  draw-axes
+  if Draw-X-And-Y-Axes? [draw-axes]
 
   set min-payoff min map [A -> min payoffs (first A) (last A)] (list [0 0] [0 1] [1 0] [1 1]) ; Used to remove negative payoffs, and for scale-color.
   set max-payoff max map [A -> max payoffs (first A) (last A)] (list [0 0] [0 1] [1 0] [1 1]) ; Used for scale-color.
@@ -72,6 +72,7 @@ to-report payoffs [a-move b-move]
   if game = "Mutualism" [report payoffs-mutualism a-move b-move]
   if game = "Prisoner's Dilemma" [report payoffs-Prisoners-Dilemma a-move b-move]
   if game = "Donation" [report payoffs-donation a-move b-move]
+  if game = "Battle of the Sexes" [report payoffs-battle-of-the-sexes a-move b-move]
   report false
 end
 
@@ -79,10 +80,10 @@ end
 
 to-report Payoffs-Mutualism [A-Move B-Move]
   report item (A-Move * 2 + B-Move) (list
-    (list 0 0) ; Selfish-Selfish
-    (list 2 1) ; ; Selfish-Genererous
-    (list 1 2) ; Genererous-Selfish
     (list k k) ; Genererous-Genererous
+    (list 1 2) ; Genererous-Selfish
+    (list 2 1) ; ; Selfish-Genererous
+    (list 0 0) ; Selfish-Selfish
     )
 end
 
@@ -105,6 +106,17 @@ to-report Payoffs-Prisoners-Dilemma [A-Move B-Move]
     (list sucker temptation) ; ; C-D
     (list temptation sucker) ; D-C
     (list punishment punishment) ; Defect-Defect
+    )
+end
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+to-report Payoffs-Battle-Of-The-Sexes [A-Move B-Move]
+  report item (A-Move * 2 + B-Move) (list
+    (list your-preference my-preference) ; We both went with B's ideal.
+    (list 0 0) ; ; We missed each other.
+    (list 0 0) ; ; We missed each other.
+    (list my-preference your-preference) ; We both went with A's ideal.
     )
 end
 
@@ -277,13 +289,17 @@ end
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-to Color-Patches-By-Payoff1
+to Color-Patches-By-Payoff [first-not-last?]
   foreach sorted-patches [pa ->
     ask pa [
       if (pxcor >= 0 and pycor >= 0 and pxcor <= x-max and pycor <= y-max) [
-        set pcolor scale-color blue
-         (first payoffs-xy (pxcor / x-max) (pycor / y-max))
-         min-payoff max-payoff
+        let cur-payoffs payoffs-xy (pxcor / x-max) (pycor / y-max)
+        ifelse first-not-last? [
+          set pcolor scale-color blue (first cur-payoffs) min-payoff max-payoff
+        ]
+        [
+          set pcolor scale-color red (last cur-payoffs) min-payoff max-payoff
+        ]
       ]
     ]
   ]
@@ -291,19 +307,26 @@ end
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-to Color-Patches-By-Payoff2
-  foreach sorted-patches [pa ->
-    ask pa [
-      if (pxcor >= 0 and pycor >= 0 and pxcor <= x-max and pycor <= y-max) [
-        set pcolor scale-color red
-         (last payoffs-xy (pxcor / x-max) (pycor / y-max))
-         min-payoff max-payoff
-      ]
+to recolor-pops-by-players
+  foreach sorted-populations [po ->
+    ask po [
+      ; Assuming pl-fitness is payoff from just one round.
+      set color scale-color green (mean map [a -> [pl-fitness] of a] po-players) (-1 + min-payoff) (1 + max-payoff)
     ]
   ]
 end
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+to recolor-pops-by-xy
+  foreach sorted-populations [po ->
+    ask po [
+      ; Assuming pl-fitness is payoff from just one round.
+      let cur-payoffs payoffs-xy x y
+      set color scale-color green (first cur-payoffs) (-1 + min-payoff) (1 + max-payoff)
+    ]
+  ]
+end
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -319,9 +342,19 @@ end
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Replicator dynamics
+;; Agent-Based Simulation using Replication and/or Memory
 
-to Replicator-Dynamics-By-ABM
+to Setup-Stochastic-Sim
+  ; Setup populations at evenly-spaced points in state space.
+  ; Each population contains a number of player agents,
+  ; divided between two groups.
+  ; Players will then:
+  ; either base play same pl-action move each match,
+  ; after which population is updated using stochastic replication,
+  ; or players will base decisions on sampling and memory,
+  ; and memory will be updated after each match against
+  ; a member of the opposite group.
+
   setup
 
   foreach (range 0 100 10) [x100 ->
@@ -394,6 +427,7 @@ end
 
 to setup-initial-memory
   ; Run as player.
+
   set pl-memory []
   ; (Actually, we're currently using belief instead of memory.)
   if memory-initialization = "Empty" [
@@ -404,29 +438,39 @@ to setup-initial-memory
   set pl-other-interactions ifelse-value (pl-group = 1) [Memory-Initial-Weight-1] [Memory-Initial-Weight-2]
   let prob 0.0
   if memory-initialization = "Fixed-Proportion-50:50" [
+    ; Assumes past opponents played "1" in 50% of matches, "0" otherwise.
     set prob 0.5
     set pl-belief round (prob * pl-other-interactions)
     stop
   ]
   if memory-initialization = "Fixed-Proportion-MSNE" [
+    ; Assumes past opponents played the Mixed-Strategy Nash Equilibrium.
     set prob msne
     set pl-belief round (prob * pl-other-interactions)
     stop
   ]
-  if memory-initialization = "Fixed-Proportion-Action" [
+  if memory-initialization = "Fixed-Proportion-xy" [
+    ; Makes use of the fact that players have been initialised with pl-action
+    ; values in proportion to the x and y positions of the population.
     set prob mean map [pl -> [pl-action] of pl] ifelse-value (pl-group = 1) [[po-group2] of pl-population] [[po-group1] of pl-population]
     set pl-belief round (prob * pl-other-interactions)
     stop
   ]
+
+  ; Random memories, using the fixed proportions as probabilities
+  ; and Bernoulli-distributed random sampling.
+
   if memory-initialization = "Random-50:50" [
     set prob 0.5
   ]
   if memory-initialization = "Random-MSNE" [
     set prob msne
   ]
-  if memory-initialization = "Random-Action" [
+  if memory-initialization = "Random-xy" [
     set prob mean map [pl -> [pl-action] of pl] ifelse-value (pl-group = 1) [[po-group2] of pl-population] [[po-group1] of pl-population]
   ]
+
+  ; (NetLogo doesn't have a random-binomial procedure, sum bernoulli trials instead.)
   set pl-belief sum n-values pl-other-interactions [ifelse-value (prob > random-float 1) [1] [0]]
 end
 
@@ -435,9 +479,9 @@ end
 to play-game
   foreach sorted-populations [po ->
     ask po [
-      foreach shuffle po-players [ego ->
+      foreach shuffle po-players [ego -> ; Giving everyone a chance to be updated.
         ask ego [
-          set pl-fitness 0
+;          set pl-fitness 0
           let alter nobody
           let selected-item 0
           let opponents []
@@ -454,7 +498,7 @@ to play-game
           ]
           let ego-action 0
           let alter-action 0
-          let ego-payoff 0.0
+          let cur-payoffs [0.0 0.0]
           repeat 1 [
             set alter one-of opponents
             while [alter = ego] [set alter one-of opponents]
@@ -464,22 +508,31 @@ to play-game
               if playing-noise > random-float 100 [set ego-action 1 - ego-action]
               if playing-noise > random-float 100 [set alter-action 1 - alter-action]
             ]
-            set ego-payoff first payoffs ego-action alter-action
-            set pl-fitness pl-fitness + ego-payoff ; For evolutionary dynamics
             set pl-action ego-action ; Should we record the pre-noise version instead?
-            if pl-group != [pl-group] of alter [
-              ; Only remembering interactions with other groups.
-              ;set pl-memory fput (list alter-action ego-action ego-payoff alter) sublist pl-memory 0 (min (list (length pl-memory) memory-length)) ; For cultural models
-              ; If using "unlimited" memory, then storing in pl-memory is a waste. Better to just keep a count.
-              set pl-belief pl-belief + alter-action ; NB: Updating beliefs during the round. Ego could now become an opponent in this same round, and base actions on this updated belief.
-              set pl-other-interactions pl-other-interactions + 1
-            ]
-            ; Doesn't alter get any payoff from this???
+            set cur-payoffs payoffs ego-action alter-action
+            update-after-match ego alter alter-action (first cur-payoffs)
+            ; NB: alter doesn't get get any payoff from this.
+            ;update-after-match alter ego ego-action (last cur-payoffs)
           ]
         ]
       ]
     ]
   ]
+end
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+to update-after-match [given-player given-opponent opponents-action players-payoff]
+  set pl-fitness players-payoff ; For evolutionary dynamics
+  ;set pl-fitness pl-fitness + players-payoff ; For evolutionary dynamics
+  if pl-group != [pl-group] of given-opponent [
+    ; Only remembering interactions with other groups.
+    ;set pl-memory fput (list alter-action ego-action ego-payoff alter) sublist pl-memory 0 (min (list (length pl-memory) memory-length)) ; For cultural models
+    ; If using "unlimited" memory, then storing in pl-memory is a waste. Better to just keep a count.
+    set pl-belief pl-belief + opponents-action ; NB: Updating beliefs during the round. Ego could now become an opponent in this same round, and base actions on this updated belief.
+    set pl-other-interactions pl-other-interactions + 1
+  ]
+
 end
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -567,6 +620,7 @@ end
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 to replicate
+  ; Use random sampling to build the next generation.
   let fitness-corrective 0 - min (list 0 min-payoff) ; rnd:weighted cannot use negative payoffs.
   let m (delta * speed-1 / 100)
   let n (delta * speed-2 / 100)
@@ -634,25 +688,19 @@ to go-sim
   set num-pops-with-group2-dom count populations with [x < y]
   set num-pops-with-groups-equal count populations with [x = y]
 
-  if Recolor-Populations? [recolor-pops-by-players]
+;  if Recolor-Populations? [recolor-pops-by-players]
+  if Recolor-Populations? [recolor-pops-by-xy]
   tick
 end
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-to recolor-pops-by-players
-  foreach sorted-populations [po ->
-    ask po [
-      ; Assuming pl-fitness is payoff from just one round.
-      set color scale-color green (mean map [a -> [pl-fitness] of a] po-players) (5 + max-payoff) (-5 + min-payoff)
-    ]
-  ]
-end
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Replicator Dynamics using Equations
 
 to Replicator-Dynamics-By-Equation
+  ; Setup populations as evenly-spaced points in state space.
+  ; Ready for evolving positions using equations.
+
   setup
 
   foreach (range 10 100 10) [x100 ->
@@ -667,8 +715,8 @@ to Replicator-Dynamics-By-Equation
         let y-dot rd-y-dot
         facexy (xcor + x-max * x-dot) (ycor + y-max * y-dot)
         facexy (x-max * next-x) (y-max * next-y)
-        pen-down
-;        if Population-Pen-Down? [pen-down]
+;        pen-down
+        if Population-Pen-Down? [pen-down]
       ]
     ]
   ]
@@ -770,7 +818,247 @@ to go-eqn
   foreach sorted-populations [po ->
     ask po [rd-move-delta delta]
   ]
+  if Recolor-Populations? [recolor-pops-by-xy]
   tick
+end
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Quick setup of parameters for reproducing various models.
+
+to setup-model
+  let scen []
+
+  if model = "Amadae" [set scen model-amadae]
+  if model = "Amadae + Prior Memory" [set scen model-amadae-prior-memory]
+  if model = "Bergstrom & Lachmann" [set scen model-bergstrom-lachmann]
+  if model = "B & L + Hawk & Dove" [set scen model-bergstrom-lachmann-HD]
+  if model = "B & L + HD + Stochastics" [set scen model-bergstrom-lachmann-HD-stochastic]
+  if scen = [] [user-message "FATAL! Didn't recognise value of parameter \"Model\". See procedure \"Setup-Model\" to investigate (e.g. typos?)" stop]
+
+  foreach first scen [a ->
+    ifelse is-string? (last a) [
+      run (word "set " (first a) " \"" (last a) "\"")
+    ]
+    [
+      run (word "set " (first a) " " (last a))
+    ]
+  ]
+  run last scen
+end
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+to-report model-amadae
+  ; Amadae's cultural evolution model (in preparation).
+  report (list
+    (list
+      ["Game" "Hawk-Dove"]
+      ["Rounds" 200]
+      ["Population-Size" 200]
+      ["Perc-Group2" 80]
+      ["Opponents-Include-Own-Group?" true]
+      ["Playing-Strategy" "Amadae"]
+      ["Memory-Initialization" "Empty"]
+      ["Memory-Initial-Weight-1" 10]
+      ["Memory-Initial-Weight-2" 10]
+      ["Playing-Noise" 0]
+      ["Replicate?" false]
+      ["Replication-Noise" 0]
+      ["Speed-1" 10]
+      ["Speed-2" 10]
+      ["Delta" 0.1]
+      ["Value" 10]
+      ["Value-As-Perc-Of-Cost" 80]
+      ["Punishment" 1]
+      ["Reward" 3]
+      ["Sucker" 0]
+      ["Temptation" 5]
+      ["k" 1.5]
+      ["My-Preference" 40]
+      ["Your-Preference" 20]
+      ["Draw-X-And-Y-Axes?" true]
+      ["Reposition-Populations" "By Mean Belief"]
+      ["Population-Pen-Down?" false]
+      ["Recolor-Populations?" false]
+      ["Memory-Length" 2000]
+    )
+    "setup-stochastic-sim"
+  )
+end
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+to-report model-amadae-prior-memory
+  ; Amadae's rules, but players have prior memories.
+  ; Group 2 has more prior memory than Group 1,
+  ; and so will learn / update slower.
+
+  report (list
+    (list
+      ["Game" "Hawk-Dove"]
+      ["Rounds" 200]
+      ["Population-Size" 200]
+      ["Perc-Group2" 50]
+      ["Opponents-Include-Own-Group?" true]
+      ["Playing-Strategy" "Amadae"]
+      ["Memory-Initialization" "Fixed-Proportion-xy"]
+      ["Memory-Initial-Weight-1" 10]
+      ["Memory-Initial-Weight-2" 40]
+      ["Playing-Noise" 0]
+      ["Replicate?" false]
+      ["Replication-Noise" 0]
+      ["Speed-1" 10]
+      ["Speed-2" 10]
+      ["Delta" 0.1]
+      ["Value" 10]
+      ["Value-As-Perc-Of-Cost" 80]
+      ["Punishment" 1]
+      ["Reward" 3]
+      ["Sucker" 0]
+      ["Temptation" 5]
+      ["k" 1.5]
+      ["My-Preference" 40]
+      ["Your-Preference" 20]
+      ["Draw-X-And-Y-Axes?" true]
+      ["Reposition-Populations" "By Mean Belief"]
+      ["Population-Pen-Down?" true]
+      ["Recolor-Populations?" false]
+      ["Memory-Length" 2000]
+    )
+    "setup-stochastic-sim"
+  )
+end
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+to-report model-bergstrom-lachmann
+  ; The equation-based model of Bergstrom & Lachmann (2003).
+  ; We've given Group 2 faster updating than Group 1,
+  ; but made group sizes equal.
+  report (list
+    (list
+;      ["Game" "Hawk-Dove"]
+      ["Game" "Mutualism"]
+      ["Rounds" 200]
+      ["Population-Size" 200]
+      ["Perc-Group2" 50]
+      ["Opponents-Include-Own-Group?" false]
+;      ["Playing-Strategy" "Amadae"]
+;      ["Memory-Initialization" "Empty"]
+;      ["Memory-Initial-Weight-1" 10]
+;      ["Memory-Initial-Weight-2" 10]
+;      ["Playing-Noise" 0]
+;      ["Replicate?" false]
+;      ["Replication-Noise" 0]
+      ["Speed-1" 10]
+      ["Speed-2" 30]
+      ["Delta" 0.1]
+      ["Value" 10]
+      ["Value-As-Perc-Of-Cost" 80]
+      ["Punishment" 1]
+      ["Reward" 3]
+      ["Sucker" 0]
+      ["Temptation" 5]
+      ["k" 1.5]
+      ["My-Preference" 40]
+      ["Your-Preference" 20]
+      ["Draw-X-And-Y-Axes?" true]
+      ["Reposition-Populations" "By Mean Action"]
+      ["Population-Pen-Down?" true]
+      ["Recolor-Populations?" false]
+      ["Memory-Length" 2000]
+    )
+    "Replicator-Dynamics-By-Equation"
+  )
+end
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+to-report model-bergstrom-lachmann-hd
+  ; The equation-based model of Bergstrom & Lachmann (2003),
+  ; but applied to Hawk & Dove, instead of mutualism.
+  ; We've given Group 2 faster updating than Group 1,
+  ; but made group sizes equal.
+  report (list
+    (list
+      ["Game" "Hawk-Dove"]
+      ["Rounds" 200]
+      ["Population-Size" 200]
+      ["Perc-Group2" 50]
+      ["Opponents-Include-Own-Group?" false]
+;      ["Playing-Strategy" "Amadae"]
+;      ["Memory-Initialization" "Empty"]
+;      ["Memory-Initial-Weight-1" 10]
+;      ["Memory-Initial-Weight-2" 10]
+;      ["Playing-Noise" 0]
+;      ["Replicate?" false]
+;      ["Replication-Noise" 0]
+      ["Speed-1" 10]
+      ["Speed-2" 30]
+      ["Delta" 0.1]
+      ["Value" 10]
+      ["Value-As-Perc-Of-Cost" 80]
+      ["Punishment" 1]
+      ["Reward" 3]
+      ["Sucker" 0]
+      ["Temptation" 5]
+      ["k" 1.5]
+      ["My-Preference" 40]
+      ["Your-Preference" 20]
+      ["Draw-X-And-Y-Axes?" true]
+      ["Reposition-Populations" "By Mean Action"]
+      ["Population-Pen-Down?" true]
+      ["Recolor-Populations?" false]
+      ["Memory-Length" 2000]
+    )
+    "Replicator-Dynamics-By-Equation"
+  )
+end
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+to-report model-bergstrom-lachmann-hd-stochastic
+  ; Similar model to Bergstrom & Lachmann (2003),
+  ; but representing copies of strategies explicitly,
+  ; and sampling randomly to generate new generations.
+  ; Also: applied to Hawk & Dove, instead of mutualism.
+  ; We've given Group 2 faster updating than Group 1,
+  ; but made group sizes equal.
+  report (list
+    (list
+      ["Game" "Hawk-Dove"]
+      ["Rounds" 2000]
+      ["Population-Size" 200]
+      ["Perc-Group2" 50]
+      ["Opponents-Include-Own-Group?" false]
+      ["Playing-Strategy" "Last Action"]
+;      ["Memory-Initialization" "Empty"]
+;      ["Memory-Initial-Weight-1" 10]
+;      ["Memory-Initial-Weight-2" 10]
+;      ["Playing-Noise" 0]
+      ["Replicate?" true]
+      ["Replication-Noise" 0]
+      ["Speed-1" 10]
+      ["Speed-2" 30]
+      ["Delta" 0.1]
+      ["Value" 10]
+      ["Value-As-Perc-Of-Cost" 80]
+      ["Punishment" 1]
+      ["Reward" 3]
+      ["Sucker" 0]
+      ["Temptation" 5]
+      ["k" 1.5]
+      ["My-Preference" 40]
+      ["Your-Preference" 20]
+      ["Draw-X-And-Y-Axes?" true]
+      ["Reposition-Populations" "By Mean Action"]
+      ["Population-Pen-Down?" false]
+      ["Recolor-Populations?" false]
+      ["Memory-Length" 2000]
+    )
+    "setup-stochastic-sim"
+  )
 end
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -779,15 +1067,11 @@ end
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 @#$#@#$#@
 GRAPHICS-WINDOW
-245
+250
 10
-637
+642
 403
 -1
 -1
@@ -813,9 +1097,9 @@ ticks
 
 INPUTBOX
 10
-125
-162
-185
+300
+110
+360
 Population-Size
 200.0
 1
@@ -824,14 +1108,14 @@ Number
 
 SLIDER
 10
-190
+210
 182
-223
+243
 Perc-Group2
 Perc-Group2
 0
 100
-90.0
+80.0
 5
 1
 %
@@ -839,9 +1123,9 @@ HORIZONTAL
 
 INPUTBOX
 10
-565
+645
 70
-625
+705
 Value
 10.0
 1
@@ -849,10 +1133,10 @@ Value
 Number
 
 MONITOR
-170
-565
-305
-610
+95
+645
+230
+690
 D-D: [V/2 V/2]
 made-neat Payoffs-Hawk-Dove 0 0
 17
@@ -860,10 +1144,10 @@ made-neat Payoffs-Hawk-Dove 0 0
 11
 
 MONITOR
-310
-565
-445
-610
+235
+645
+370
+690
 D-H: [0 V]
 made-neat Payoffs-Hawk-Dove 0 1
 17
@@ -871,10 +1155,10 @@ made-neat Payoffs-Hawk-Dove 0 1
 11
 
 MONITOR
-170
-615
-305
-660
+95
+695
+230
+740
 H-D: [V 0]
 made-neat Payoffs-Hawk-Dove 1 0
 17
@@ -882,10 +1166,10 @@ made-neat Payoffs-Hawk-Dove 1 0
 11
 
 MONITOR
-310
-615
-445
-660
+235
+695
+370
+740
 H-H: [(V-C)/2 (V-C)/2]
 made-neat Payoffs-Hawk-Dove 1 1
 17
@@ -894,19 +1178,19 @@ made-neat Payoffs-Hawk-Dove 1 1
 
 TEXTBOX
 15
-505
-170
 530
+170
+555
 Hawk-Dove Payoffs:
 16
 0.0
 1
 
 MONITOR
-75
-615
-155
-660
+290
+545
+370
+590
 Value / Cost
 value / cost
 5
@@ -915,25 +1199,25 @@ value / cost
 
 SLIDER
 10
-530
+555
 202
-563
+588
 Value-As-Perc-Of-Cost
 Value-As-Perc-Of-Cost
 0
-200
-90.0
-10
+100
+80.0
+5
 1
 %
 HORIZONTAL
 
 MONITOR
-75
-565
-155
-610
-NIL
+205
+545
+285
+590
+Cost (C)
 Cost
 3
 1
@@ -941,9 +1225,9 @@ Cost
 
 MONITOR
 100
-230
+250
 187
-275
+295
 Group2 (Red)
 Perc-group2 * population-size / 100
 1
@@ -952,9 +1236,9 @@ Perc-group2 * population-size / 100
 
 MONITOR
 10
-230
+250
 97
-275
+295
 Group1 (Blue)
 (100 - Perc-Group2) * population-size / 100
 1
@@ -962,11 +1246,11 @@ Group1 (Blue)
 11
 
 BUTTON
-650
-240
-862
-273
-NIL
+655
+315
+795
+348
+Setup for Equations
 Replicator-Dynamics-By-Equation
 NIL
 1
@@ -979,10 +1263,10 @@ NIL
 1
 
 INPUTBOX
-820
-140
-900
-200
+825
+215
+905
+275
 Delta
 0.1
 1
@@ -991,19 +1275,19 @@ Number
 
 CHOOSER
 10
-325
-157
-370
+160
+240
+205
 Game
 Game
 "Hawk-Dove" "Prisoner's Dilemma" "Mutualism" "Donation"
 0
 
 SLIDER
-475
-535
-647
-568
+465
+590
+637
+623
 k
 k
 0
@@ -1015,64 +1299,64 @@ NIL
 HORIZONTAL
 
 MONITOR
-475
-575
-532
-620
-S-S
+465
+630
+522
+675
+G-G
 made-neat Payoffs-mutualism 0 0
 2
 1
 11
 
 MONITOR
-535
-575
-592
-620
-S-G
+525
+630
+582
+675
+G-S
 made-neat Payoffs-mutualism 0 1
 2
 1
 11
 
 MONITOR
-475
-625
-532
-670
-G-S
+465
+680
+522
+725
+S-G
 made-neat Payoffs-mutualism 1 0
 2
 1
 11
 
 MONITOR
-535
-625
-592
-670
-G-G
+525
+680
+582
+725
+S-S
 made-neat Payoffs-mutualism 1 1
 2
 1
 11
 
 TEXTBOX
-475
-505
-650
-530
+465
+560
+640
+585
 Mutualism Payoffs:
 16
 0.0
 1
 
 BUTTON
-650
-280
-712
-313
+865
+315
+927
+348
 Go 1
 go-eqn
 NIL
@@ -1086,10 +1370,10 @@ NIL
 0
 
 BUTTON
-715
-280
-777
-313
+800
+355
+862
+388
 Go 10
 repeat 10 [go-eqn]
 NIL
@@ -1103,10 +1387,10 @@ NIL
 0
 
 BUTTON
-780
-280
-847
-313
+865
+355
+932
+388
 Go 100
 repeat 100 [go-eqn]
 NIL
@@ -1120,10 +1404,10 @@ NIL
 0
 
 BUTTON
-850
-280
-912
-313
+800
+315
+862
+348
 Go
 go-eqn
 T
@@ -1138,9 +1422,9 @@ NIL
 
 MONITOR
 650
-340
+130
 707
-385
+175
 Mouse-X
 ifelse-value mouse-inside? [mouse-xcor / x-max] [\"\"]
 3
@@ -1149,9 +1433,9 @@ ifelse-value mouse-inside? [mouse-xcor / x-max] [\"\"]
 
 MONITOR
 710
-340
+130
 767
-385
+175
 Mouse-Y
 ifelse-value mouse-inside? [mouse-ycor / y-max] [\"\"]
 3
@@ -1160,19 +1444,19 @@ ifelse-value mouse-inside? [mouse-ycor / y-max] [\"\"]
 
 TEXTBOX
 650
-115
-800
-135
-Replicator Dynamics:
-16
+190
+940
+208
+Replicator Dynamics (Equation or Stochastic):
+14
 0.0
 1
 
 BUTTON
-955
-255
-1017
-288
+1140
+365
+1202
+398
 Go 1
 go-sim
 NIL
@@ -1187,11 +1471,11 @@ NIL
 
 BUTTON
 955
-215
-1142
-248
-NIL
-Replicator-Dynamics-By-ABM
+365
+1070
+398
+Setup ABM
+Setup-Stochastic-Sim
 NIL
 1
 T
@@ -1203,10 +1487,10 @@ NIL
 1
 
 BUTTON
-1020
-255
-1082
-288
+1075
+365
+1137
+398
 Go
 go-sim
 T
@@ -1219,21 +1503,11 @@ NIL
 NIL
 0
 
-TEXTBOX
-10
-100
-160
-125
-Simulate Groups:
-16
-0.0
-1
-
 SWITCH
-1125
-175
-1302
-208
+755
+470
+932
+503
 Population-Pen-Down?
 Population-Pen-Down?
 1
@@ -1242,9 +1516,9 @@ Population-Pen-Down?
 
 SLIDER
 1135
-260
+310
 1307
-293
+343
 Playing-Noise
 Playing-Noise
 0
@@ -1257,9 +1531,9 @@ HORIZONTAL
 
 SLIDER
 1075
-140
+410
 1247
-173
+443
 Replication-Noise
 Replication-Noise
 0
@@ -1272,9 +1546,9 @@ HORIZONTAL
 
 SWITCH
 10
-285
+365
 242
-318
+398
 Opponents-Include-Own-Group?
 Opponents-Include-Own-Group?
 0
@@ -1282,10 +1556,10 @@ Opponents-Include-Own-Group?
 -1000
 
 SLIDER
-645
-140
-817
-173
+650
+215
+822
+248
 Speed-1
 Speed-1
 0
@@ -1297,25 +1571,25 @@ Speed-1
 HORIZONTAL
 
 SLIDER
-645
-175
-817
-208
+650
+250
+822
+283
 Speed-2
 Speed-2
 0
 100
-40.0
+10.0
 5
 1
 %
 HORIZONTAL
 
 INPUTBOX
-680
-535
-760
-595
+665
+590
+745
+650
 Reward
 3.0
 1
@@ -1323,10 +1597,10 @@ Reward
 Number
 
 INPUTBOX
-760
-535
-840
-595
+745
+590
+825
+650
 Sucker
 0.0
 1
@@ -1334,10 +1608,10 @@ Sucker
 Number
 
 INPUTBOX
-680
-595
-760
-655
+665
+650
+745
+710
 Temptation
 5.0
 1
@@ -1345,10 +1619,10 @@ Temptation
 Number
 
 INPUTBOX
-760
-595
-840
-655
+745
+650
+825
+710
 Punishment
 1.0
 1
@@ -1356,10 +1630,10 @@ Punishment
 Number
 
 MONITOR
-860
-535
-927
-580
+845
+590
+912
+635
 C-C: [R R]
 made-neat Payoffs-Prisoners-Dilemma 0 0
 17
@@ -1367,10 +1641,10 @@ made-neat Payoffs-Prisoners-Dilemma 0 0
 11
 
 MONITOR
-860
-585
-927
-630
+845
+640
+912
+685
 D-C: [T S]
 made-neat Payoffs-Prisoners-Dilemma 1 0
 17
@@ -1378,10 +1652,10 @@ made-neat Payoffs-Prisoners-Dilemma 1 0
 11
 
 MONITOR
-930
-535
-997
-580
+915
+590
+982
+635
 C-D: [S T]
 made-neat Payoffs-Prisoners-Dilemma 0 1
 17
@@ -1389,10 +1663,10 @@ made-neat Payoffs-Prisoners-Dilemma 0 1
 11
 
 MONITOR
-930
-585
-997
-630
+915
+640
+982
+685
 D-D: [P P]
 made-neat Payoffs-Prisoners-Dilemma 1 1
 17
@@ -1400,40 +1674,40 @@ made-neat Payoffs-Prisoners-Dilemma 1 1
 11
 
 TEXTBOX
-680
-505
-905
-530
+665
+560
+890
+585
 Prisoner's Dilemma Payoffs:
 16
 0.0
 1
 
 TEXTBOX
-475
-675
-600
-721
-0 = S = Selfish\n1 = G = Generous
+465
+730
+590
+776
+0 = G = Generous\n1 = S = Selfish\n
 13
 0.0
 1
 
 TEXTBOX
-865
-635
-1015
-666
+850
+690
+1000
+721
 0 = C = Cooperate\n1 = D = Defect
 13
 0.0
 1
 
 TEXTBOX
-315
-530
-425
-565
+290
+600
+400
+635
 1 = H = Hawk\n0 = D = Dove
 13
 0.0
@@ -1441,9 +1715,9 @@ TEXTBOX
 
 TEXTBOX
 10
-690
+795
 160
-726
+831
 Donation Payoffs (Alternative PD):
 16
 0.0
@@ -1451,9 +1725,9 @@ Donation Payoffs (Alternative PD):
 
 MONITOR
 170
-690
+795
 260
-735
+840
 C-C: [V-C V-C]
 made-neat Payoffs-donation 0 0
 17
@@ -1462,9 +1736,9 @@ made-neat Payoffs-donation 0 0
 
 MONITOR
 265
-690
+795
 355
-735
+840
 C-D:  [-C V]
 made-neat Payoffs-donation 0 1
 17
@@ -1473,9 +1747,9 @@ made-neat Payoffs-donation 0 1
 
 MONITOR
 170
-740
+845
 260
-785
+890
 D-C: [V -C]
 made-neat Payoffs-donation 1 0
 17
@@ -1484,9 +1758,9 @@ made-neat Payoffs-donation 1 0
 
 MONITOR
 265
-740
+845
 355
-785
+890
 D-D: [0 0]
 made-neat Payoffs-donation 1 1
 17
@@ -1495,9 +1769,9 @@ made-neat Payoffs-donation 1 1
 
 TEXTBOX
 10
-740
+845
 160
-771
+876
 0 = C = Cooperate\n1 = D = Defect
 13
 0.0
@@ -1524,10 +1798,10 @@ This program (C) Christopher J Watts, 2021.
 1
 
 INPUTBOX
-1275
-395
-1427
-455
+1290
+170
+1442
+230
 Memory-Length
 2000.0
 1
@@ -1535,20 +1809,20 @@ Memory-Length
 Number
 
 CHOOSER
-960
-295
-1127
-340
+955
+310
+1122
+355
 Playing-Strategy
 Playing-Strategy
 "Last Action" "MSNE" "Memory" "Amadae" "Stochastic Memory" "MSNE / Stoch Memory"
 3
 
 MONITOR
-815
 10
-1002
-55
+595
+197
+640
 Mixed-Strategy Nash Equilibrium
 MSNE
 5
@@ -1556,10 +1830,10 @@ MSNE
 11
 
 MONITOR
-1005
-10
-1087
-55
+200
+595
+282
+640
 NIL
 MSNE-Payoff
 3
@@ -1567,10 +1841,10 @@ MSNE-Payoff
 11
 
 MONITOR
-925
-60
-1032
-105
+760
+30
+867
+75
 G2 > G1 : (y > x)
 num-pops-with-group2-dom
 17
@@ -1578,10 +1852,10 @@ num-pops-with-group2-dom
 11
 
 MONITOR
-815
-60
-922
-105
+650
+30
+757
+75
 G1 > G2 : (x > y)
 num-pops-with-group1-dom
 17
@@ -1590,9 +1864,9 @@ num-pops-with-group1-dom
 
 SWITCH
 955
-140
+410
 1067
-173
+443
 Replicate?
 Replicate?
 1
@@ -1600,30 +1874,30 @@ Replicate?
 -1000
 
 TEXTBOX
-650
-220
-800
-238
+655
+295
+805
+313
 Use Equations:
 14
 0.0
 1
 
 TEXTBOX
-955
-120
-1130
-138
-Use Agent-Base Simulation:
+960
+95
+1135
+113
+Use Agent-Based Simuation:
 14
 0.0
 1
 
 MONITOR
 770
-340
-862
-385
+130
+885
+175
 Mouse-Payoffs
 mouse-payoffs
 17
@@ -1631,21 +1905,21 @@ mouse-payoffs
 11
 
 CHOOSER
-1315
-135
-1462
-180
+10
+405
+157
+450
 Reposition-Populations
 Reposition-Populations
 "By Mean Action" "By Mean Belief"
 1
 
 BUTTON
-1315
-185
-1432
-218
-Reposition Pops
+160
+410
+260
+443
+Reposition Now
 reposition-pops
 NIL
 1
@@ -1658,29 +1932,12 @@ NIL
 0
 
 BUTTON
-650
-390
-822
-423
-Color-Patches-By-Payoff1
-Color-Patches-By-Payoff1
-NIL
-1
-T
-OBSERVER
-NIL
-NIL
-NIL
-NIL
-0
-
-BUTTON
-650
+625
 425
-822
+742
 458
-Color-Patches-By-Payoff2
-Color-Patches-By-Payoff2
+By Payoff to G1
+Color-Patches-By-Payoff true
 NIL
 1
 T
@@ -1692,11 +1949,28 @@ NIL
 0
 
 BUTTON
-650
-460
-792
-493
-Color Patches White
+745
+425
+862
+458
+By Payoff to G2
+Color-Patches-By-Payoff false
+NIL
+1
+T
+OBSERVER
+NIL
+NIL
+NIL
+NIL
+0
+
+BUTTON
+865
+425
+950
+458
+White
 foreach sorted-patches [pa -> ask pa [set pcolor white]]
 NIL
 1
@@ -1709,10 +1983,10 @@ NIL
 0
 
 INPUTBOX
-10
-375
-85
-435
+115
+300
+190
+360
 Rounds
 200.0
 1
@@ -1720,12 +1994,12 @@ Rounds
 Number
 
 BUTTON
-170
-135
-232
-168
-NIL
-Setup
+10
+120
+117
+153
+Setup Model
+Setup-model
 NIL
 1
 T
@@ -1737,10 +2011,10 @@ NIL
 1
 
 MONITOR
-1115
-60
-1227
-105
+950
+30
+1062
+75
 NIL
 Count Populations
 17
@@ -1748,10 +2022,10 @@ Count Populations
 11
 
 MONITOR
-1035
-60
-1100
-105
+870
+30
+935
+75
 G1 = G2
 num-pops-with-groups-equal
 17
@@ -1759,30 +2033,30 @@ num-pops-with-groups-equal
 11
 
 TEXTBOX
-1325
-235
-1565
-375
+275
+410
+515
+535
 Key:\nAxes range from 0 (all Dove) to 1 (all Hawk).\nMean-Belief:\nx represents Group 2's beliefs about Group 1.\ny represents Group 1's beliefs about Group 2.\nMean-Action:\nx represents Group 1's most recent action.\ny represents Group 2's most recent action.\n
 11
 0.0
 1
 
 CHOOSER
-960
-345
-1137
-390
+955
+120
+1132
+165
 Memory-Initialization
 Memory-Initialization
-"Empty" "Random-50:50" "Random-MSNE" "Random-Action" "Fixed-Proportion-50:50" "Fixed-Proportion-MSNE" "Fixed-Proportion-Action"
+"Empty" "Random-50:50" "Random-MSNE" "Random-xy" "Fixed-Proportion-50:50" "Fixed-Proportion-MSNE" "Fixed-Proportion-xy"
 0
 
 INPUTBOX
-960
-395
-1112
-455
+955
+170
+1107
+230
 Memory-Initial-Weight-1
 10.0
 1
@@ -1790,10 +2064,10 @@ Memory-Initial-Weight-1
 Number
 
 SWITCH
-955
-175
-1122
-208
+585
+470
+752
+503
 Recolor-Populations?
 Recolor-Populations?
 1
@@ -1801,10 +2075,10 @@ Recolor-Populations?
 -1000
 
 INPUTBOX
-1115
-395
-1267
-455
+1110
+170
+1262
+230
 Memory-Initial-Weight-2
 10.0
 1
@@ -1812,13 +2086,208 @@ Memory-Initial-Weight-2
 Number
 
 TEXTBOX
-1275
-375
-1425
-393
+1290
+150
+1440
+168
 (Not currently used)
 11
 0.0
+1
+
+SLIDER
+680
+780
+852
+813
+My-Preference
+My-Preference
+0
+100
+40.0
+5
+1
+NIL
+HORIZONTAL
+
+SLIDER
+680
+815
+852
+848
+Your-Preference
+Your-Preference
+0
+100
+20.0
+5
+1
+NIL
+HORIZONTAL
+
+TEXTBOX
+680
+750
+945
+775
+Battle of the Sexes Payoffs:
+16
+0.0
+1
+
+MONITOR
+880
+790
+945
+835
+B's Pref
+made-neat Payoffs-Battle-Of-The-Sexes 0 0
+17
+1
+11
+
+MONITOR
+950
+790
+1015
+835
+Missed
+made-neat Payoffs-Battle-Of-The-Sexes 0 1
+17
+1
+11
+
+MONITOR
+880
+840
+945
+885
+Missed
+made-neat Payoffs-Battle-Of-The-Sexes 1 0
+17
+1
+11
+
+MONITOR
+950
+840
+1015
+885
+A's Pref
+made-neat Payoffs-Battle-Of-The-Sexes 1 1
+17
+1
+11
+
+TEXTBOX
+685
+860
+885
+905
+0 = I opt for B's ideal.\n1 = I opt for A's ideal.
+13
+0.0
+1
+
+TEXTBOX
+930
+770
+990
+788
+B's options:
+11
+0.0
+1
+
+TEXTBOX
+860
+825
+875
+843
+A's
+11
+0.0
+1
+
+TEXTBOX
+955
+235
+1285
+320
+Initial memory weights:\nThe more past memory a group's members have, the less influence new evidence has on their beliefs.\nIf Group 1 has higher weight than Group 2, Group 1 players update their beliefs (about Group 2's actions and shown on y-axis) slower.
+11
+0.0
+1
+
+TEXTBOX
+655
+405
+805
+423
+Colour Patches:
+13
+0.0
+1
+
+TEXTBOX
+650
+90
+885
+136
+Identify positions in state space using the mouse pointer:
+13
+0.0
+1
+
+TEXTBOX
+650
+10
+800
+28
+Estimate Domination:
+13
+0.0
+1
+
+TEXTBOX
+875
+750
+1025
+768
+(Not currently implemented.)
+11
+0.0
+1
+
+TEXTBOX
+585
+505
+770
+546
+Recolor populations based on payoff received from playing x against y.\nLighter color = Higher payoff.
+11
+0.0
+1
+
+SWITCH
+10
+470
+182
+503
+Draw-X-And-Y-Axes?
+Draw-X-And-Y-Axes?
+0
+1
+-1000
+
+CHOOSER
+10
+70
+240
+115
+Model
+Model
+"Bergstrom & Lachmann" "Amadae" "B & L + Hawk & Dove" "B & L + HD + Stochastics" "Amadae + Prior Memory"
 1
 
 @#$#@#$#@
@@ -1831,55 +2300,92 @@ Simulates population dynamics for evolving populations of game players. Games ar
 * __Hawk & Dove__
 * __Prisoner's Dilemma__ (with actions "Cooperate" and "Defect")
 * __Donation__ (a special case of Prisoner's Dilemma, but with same parameters as Hawk-Dove)
-* __Mutualism__ (with actions "Selfish" and "Generous")
+* __Mutualism__ (with actions "Selfish" and "Generous", also known as a Mixed-Motives Game)
 
-Population dynamics can be studied using equations describing a theoretical population, or using an agent-based simulation of actual players, with explicit representation of individuals being replicated.
+Population dynamics can be studied using equations describing a theoretical population, or using an agent-based simulation of actual players, with explicit representation of the individual players being replicated. 
 
-This program was developed to illustrate the model of Bergstrom & Lachmann (2003), and similar work. (See references below.) 
+In the agent-based simulation, player agents can:
 
-This program (C) Christopher J Watts, 2021.
+* either play the same action each match, after which players are sampled with preference for payoffs won to create a new generation, 
+* or play a strategy based on a stochastic rule (e.g. the Mixed-Strategy Nash Equilibrium, MSNE) and/or their memories of past matches with members of the opposite group, after which players update their memories with the new match information.
+
+This program was developed to illustrate the model of Bergstrom & Lachmann (2003), and related work by Amadae. (See references below.)
+
+To switch between different models and their parameter settings, use the Chooser "Model" and click "Setup Model". Models include:
+
+* __Bergstrom & Lachmann__ : Based on their 2003 paper. An equation-based model of population dynamics. Each item in the population is a one-move strategy for the binary game, "Mutualism". Two groups of strategies (representing "species") are given different speeds of evolution. (See _Speed-1_ and _Speed-2_.)
+* __Amadae__ : An agent-based model of cultural learning, based on ideas from Amadae (2020 and in preparation), and applied to the Hawk & Dove game. Following Axtell et al. (2000), player agents maintain memories of past matches played against members of their opposite group. Against members of their own group, they play the Mixed-Strategy Nash Equilibrium. Against members of the other group they play whichever move will deliver the maximum expected payoff to themselves. A player's expectation (belief) is based on that memory of past matches. Players are initialised with empty memories, and play MSNE until they have experienced a match against a member of the other group. The two groups of players differ in size. (See _Perc-Group2_).
+* __B & L + Hawk & Dove__ : The Bergstrom & Lachmann model applied to the Hawk & Dove game.
+* __B & L + HD + Stochastics__ : Similar scenario to \"B & L + Hawk & Dove\", but instead of updating populations with equations, individual copies of strategies are explicitly represented, and updates are performed by random sampling, weighted by payoff received.
+* __Amadae + Prior Memory__ : An ABM where players with memories apply Amadae's rules and Bayesian updating of memory, but instead of being initialised with empty memories, these players are given prior beliefs. The two groups have the same size (_Perc-Group2_ = 50%), but differ in the numbers of prior memories. (See _Memory-Initial-Weight1_ and _Memory-Initial-Weight2_.)
+
+This program (C) Christopher J. Watts, 2021.
 
 ## HOW IT WORKS
 
-The NetLogo world is used to draw a graph representing the state space for the games. Turtles are used to represent Populations of Players. Each population is divided into two groups (representing, e.g., species). Each player will have a strategy that determines which of two possible actions that player plays. (Games with more than two possible actions are not currently covered.) The population turtle has x and y coordinates. The x coordinate represents the proportion of group 1 who play the action denoted "1". (So for Hawk & Dove, x = the proportion of group 1 who play "Hawk".) The y coordinate represents the proportion of group 2 who play "1". If these proportions change, the position of the Population turtle will change. If the turtle's pen is down, a line is drawn tracing the population's evolution. Population turtles are created at multiple points in the state space, representing different proportions of "1"-players in groups 1 and 2. Thus we can study the evolution that follows from various initial positions.
+The NetLogo world is used to draw a graph representing the state space for the games. Turtles are used to represent Populations of Players. Each population is divided into two groups (representing, e.g., species). Each player will have a strategy that determines which of two possible actions that player plays. (Games with more than two possible actions are not currently covered.) 
+
+The population turtle has x and y coordinates. There are currently two distinct uses of these coordinates, as chosen by the parameter _Reposition-Populations_:
+
+* __By Mean Action__ : The __x__ coordinate represents the proportion of __group 1__ who play the action denoted "1". (So for Hawk & Dove, x = the proportion of group 1 who play "Hawk".) The __y__ coordinate represents the proportion of __group 2__ who play "1". 
+* __By Mean Belief__ : The __x__ coordinate represents the average belief among ___group 2___ players, the __y__ coordinate the average belief among ___group 1___ members. A belief is the proportion of actions in your memory made by _members of the other group_. __So x represents Group 2's belief about Group 1's actions.__
+
+If the relevant proportions change, the position of the Population turtle will change. If the turtle's pen is down, a line is drawn tracing the population's evolution through the state space. Population turtles can be created at multiple points in the state space, representing different proportions of "1"-players (or "1"-memories) in groups 1 and 2. Thus we can study the evolution that follows from various initial positions.
 
 Multiple ways of evolving a population are included:
 
-* __Replicator-Dynamics-By-Equation__ : This uses equations to simulate the dynamics according to replicator theory.
-* __Replicator-Dynamics-By-ABM__ : For each population, this creates a given number of players, and divides them between the two groups and the two strategies. Actual one-round games are then simulated between random pairs of players. The payoffs from these are used to sample for each group a number of "fit" players. Their strategies are then used to replace those held by randomly chosen players. The new proportions of "1"-players then determine the new x and y coordinates of the Population turtle. Dynamics will be stochastic, but should resemble those of the equation-based Draw-Replicator-Dynamics.
+* __Replicator Dynamics By Equation__ : This uses equations to simulate the dynamics according to replicator theory.
+* __Replicator Dynamics By ABM__ : For each population, this creates a given number of players, and divides them between the two groups and the two strategies. Actual one-round games are then simulated between random pairs of players. The payoffs from these are used to sample for each group a number of "fit" players. Their strategies are then used to replace those held by randomly chosen players. The new proportions of "1"-players then determine the new x and y coordinates of the Population turtle. Dynamics will be stochastic, but should resemble those of the equation-based Draw-Replicator-Dynamics.
+* __Cultural Learning By ABM__ : or each population, this creates a given number of players, and divides them between the two groups and the two strategies. Actual one-round games are then simulated between random pairs of players. A number of possible decision rules are provided, including playing a Mixed-Strategy Nash Equilibrium (MSNE), and playing the action with the maximum expected payoff, where expectations (beliefs) are based on memories of past matches against members of the other group to oneself. Beliefs are updated after the match, so dynamics need not come from replication and fitness/payoffs.
 
 ## HOW TO USE IT
 
-Choose which game you want to study. Review the corresponding parameters and Payoffs Table for that game. Then choose a method of analysis, and click the corresponding button. Populations will be created at different positions, representing different proportions of "1"-players in groups 1 (x-axis) and 2 (y-axis). Population then move in this state space, according to the evolving proportions of "1"-players in the two groups.
+Choose which game you want to study. Review the corresponding parameters and Payoffs Table for that game (located below the NetLogo world). 
 
-The parameter __Opponents-Include-Own-Group?__ determines whether players play only members of the other group (Off) or play any players, including from their own group (On). This can have a big affect on the shape of the state space. N.B. This parameter does not affect replication, however: a player can only replace their strategy with one sampled from their own group.
+Then choose a method of analysis, and click the corresponding Setup button. 
+
+Two graph axes will be drawn. Populations will be created at different positions in the NetLogo world, representing different proportions of "1"-players in groups 1 (x-axis) and 2 (y-axis). Population then move in this state space, according to the evolving proportions of "1"-players in the two groups.
+
+The parameter __Opponents-Include-Own-Group?__ determines whether players play only members of the other group (Off) or play any players, including from their own group (On). This can have a big affect on the shape of the state space. N.B. This parameter does not affect replication: a player can only replace their strategy with one sampled from their own group.
 
 ## THINGS TO NOTICE
 
-Most populations will converge on a small number of attractor points (representing equilibria). E.g. the Prisoner's Dilemma has one Nash Equilibrium (Defect-Defect). Hawk-Dove has three attractors: (x=1, y=0), (x=0, y=1), and a single point, defined by the ratio between parameters Value (V) and Cost (C), at (x=V/C, y=V/C).
+Most populations will converge on a small number of attractor points (representing equilibria). E.g. the Prisoner's Dilemma has one Nash Equilibrium (Defect-Defect, the top right-hand corner). Hawk-Dove has three attractors: (x=1, y=0), (x=0, y=1), and a single point, defined by the ratio between parameters Value (V) and Cost (C), at (x=V/C, y=V/C).
 
-The populations in the stochastic agent-based model will tend to follow the equation-based model, but with some random variation. However, if a group loses its last player of a particular strategy, the population then becomes stuck on a line (e.g. the line x=1 when group 1 has lost all its "0" players). Applying some Replication-Noise can reintroduce the missing strategy. Too much Replication-Noise, however, and the population might be unable to find the attractors at all.
+The populations in the stochastic replicator model will tend to follow the equation-based model, but with some random variation. However, if a group loses its last player of a particular strategy, the population then becomes stuck on a line (e.g. the line x=1 when group 1 has lost all its "0" players). Applying some Replication-Noise can reintroduce the missing strategy. Too much Replication-Noise, however, and the population might be unable to find the attractors at all.
 
 ## THINGS TO TRY
 
-How do the game parameters affect the positions of attractors?
+How do the game parameters affect the positions attractors and and relative sizes of their basins of attraction?
 
-How do the evolution parameters (speed, delta) affect the positions of attractors?
+How do the evolution parameters (speed, delta, initial memory weight) affect the attractors and their basins?
 
-How do the relative sizes of the two groups, and the size of the player population in the ABM, affect the position of attractors?
+How do the relative sizes of the two groups, and the size of the player population in the ABM, affect the attractors and their basins?
+
+### The Red King and Red Queen Effects
+
+For some games, and some parameter settings, you may observe one group tending to dominate the other, as the population converges to attractor where the two groups concentrate on opposite actions, and payoffs favour one group over another. (E.g. In Hawk & Dove, the dominant group focuses on Hawk, the other group on Dove.) Two contrasting forms of this outcome are:
+
+* __The Red Queen Effect__ : Better payoffs go to the faster evolving group.
+* __The Red King Effect__ : Better payoffs go to the slower evolving group.
+
+Factors that can alter the relative speeds of evolution of groups include:
+
+* __Perc-Group2__ : The percentage of each population who are in Group 2 rather than Group 1. The larger group provides more information for the opposing group to learn from.
+* __Speed-1 and Speed-2__ : These parameters control how much of the population is updated during replication (in both equation-based and stochastic simulation.)
+* __Memory-Initial-Weight1 and Memory-Initial-Weight2__ : In the cultural learning ABM, agents can be given initial memories (prior probabilities). If these are large, then new individual simulated matches do not have much effect on the player's beliefs. i.e. Bayesian belief updates are slower, the larger your memory.
+
+In Hawk & Dove in a cultural learning ABM, changing from high to low Cost (via the slider Value-As-Perc-Cost), and hence changing the position of the MSNE, can reverse which of the Majority group (Red King Effect) or Minority group (Red Queen Effect) dominate.
 
 ## EXTENDING THE MODEL
 
-* Study players with learning. They remember the outcomes of previous interactions, and based their future actions on what they learnt from those interactions.
-* Use NetLogo3D (or a 2D transformation of 3D points) to study games with three actions.
+* Use NetLogo3D (or a 2D transformation of 3D coordinates) to study games with three actions.
 * Study more than two groups.
 * Constrain players' interactions by organising players into social networks, and choosing their interaction partners from their neighbours in the network. See Hammond & Axelrod (2006) for why this might be interesting.
 
-
-
 ## NETLOGO FEATURES
 
-(interesting or unusual features of NetLogo that the model uses, particularly in the Code tab; or where workarounds were needed for missing features)
+Note the visible turtles represent populations of agents, not agents themselves. (The player agents are always hidden.) Our interest here is in studying population dynamics, not the course of particular sequences of matches, nor the diversity within particular populations.
 
 ## RELATED MODELS
 
@@ -2211,8 +2717,8 @@ NetLogo 6.1.1
 @#$#@#$#@
 @#$#@#$#@
 <experiments>
-  <experiment name="experiment-Amadae" repetitions="1" runMetricsEveryStep="false">
-    <setup>Replicator-Dynamics-By-ABM</setup>
+  <experiment name="experiment-Amadae" repetitions="20" runMetricsEveryStep="false">
+    <setup>setup-sim</setup>
     <go>go-sim</go>
     <metric>timer</metric>
     <metric>count populations</metric>
@@ -2222,36 +2728,24 @@ NetLogo 6.1.1
     <metric>Cost</metric>
     <metric>msne</metric>
     <metric>msne-payoff</metric>
-    <steppedValueSet variable="Perc-Group2" first="10" step="10" last="90"/>
-    <steppedValueSet variable="Value-As-Perc-Of-Cost" first="10" step="10" last="90"/>
-    <enumeratedValueSet variable="Value">
-      <value value="10"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="Opponents-Include-Own-Group?">
-      <value value="true"/>
-    </enumeratedValueSet>
+    <metric>mean [mean map [pl -&gt; [pl-fitness] of pl] po-group1] of populations</metric>
+    <metric>mean [mean map [pl -&gt; [pl-fitness] of pl] po-group2] of populations</metric>
     <enumeratedValueSet variable="Game">
       <value value="&quot;Hawk-Dove&quot;"/>
     </enumeratedValueSet>
-    <enumeratedValueSet variable="Playing-Strategy">
-      <value value="&quot;MSNE&quot;"/>
-      <value value="&quot;Amadae&quot;"/>
-      <value value="&quot;MSNE / Stoch Memory&quot;"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="Replicate?">
-      <value value="false"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="Playing-Noise">
-      <value value="0"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="Replication-Noise">
-      <value value="0"/>
+    <enumeratedValueSet variable="Rounds">
+      <value value="200"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="Population-Size">
       <value value="200"/>
     </enumeratedValueSet>
-    <enumeratedValueSet variable="Memory-Length">
-      <value value="100"/>
+    <steppedValueSet variable="Perc-Group2" first="10" step="10" last="90"/>
+    <enumeratedValueSet variable="Opponents-Include-Own-Group?">
+      <value value="true"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Playing-Strategy">
+      <value value="&quot;Amadae&quot;"/>
+      <value value="&quot;MSNE&quot;"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="Memory-Initialization">
       <value value="&quot;Empty&quot;"/>
@@ -2260,63 +2754,35 @@ NetLogo 6.1.1
       <value value="10"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="Memory-Initial-Weight-2">
-      <value value="40"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="Reposition-Populations">
-      <value value="&quot;By Mean Belief&quot;"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="Population-Pen-Down?">
-      <value value="false"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="Rounds">
-      <value value="200"/>
-    </enumeratedValueSet>
-  </experiment>
-  <experiment name="experiment-All" repetitions="1" runMetricsEveryStep="false">
-    <setup>setup</setup>
-    <go>go</go>
-    <metric>count turtles</metric>
-    <enumeratedValueSet variable="Perc-Group2">
-      <value value="65"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="Value-As-Perc-Of-Cost">
-      <value value="20"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="Value">
       <value value="10"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="Opponents-Include-Own-Group?">
-      <value value="true"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="Game">
-      <value value="&quot;Hawk-Dove&quot;"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="Playing-Strategy">
-      <value value="&quot;Amadae&quot;"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="Replicate?">
-      <value value="true"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="Speed-1">
-      <value value="20"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="Speed-2">
-      <value value="40"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="Delta">
-      <value value="0.1"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="Playing-Noise">
       <value value="0"/>
     </enumeratedValueSet>
+    <enumeratedValueSet variable="Replicate?">
+      <value value="false"/>
+    </enumeratedValueSet>
     <enumeratedValueSet variable="Replication-Noise">
       <value value="0"/>
     </enumeratedValueSet>
-    <enumeratedValueSet variable="Population-Size">
-      <value value="200"/>
+    <enumeratedValueSet variable="Speed-1">
+      <value value="10"/>
     </enumeratedValueSet>
-    <enumeratedValueSet variable="Memory-Length">
-      <value value="200"/>
+    <enumeratedValueSet variable="Speed-2">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Delta">
+      <value value="0.1"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Value">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <steppedValueSet variable="Value-As-Perc-Of-Cost" first="10" step="10" last="90"/>
+    <enumeratedValueSet variable="Punishment">
+      <value value="1"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Reward">
+      <value value="3"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="Sucker">
       <value value="0"/>
@@ -2324,14 +2790,17 @@ NetLogo 6.1.1
     <enumeratedValueSet variable="Temptation">
       <value value="5"/>
     </enumeratedValueSet>
-    <enumeratedValueSet variable="Punishment">
-      <value value="1"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="Reward">
-      <value value="3"/>
-    </enumeratedValueSet>
     <enumeratedValueSet variable="k">
       <value value="1.5"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="My-Preference">
+      <value value="40"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Your-Preference">
+      <value value="20"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Draw-X-And-Y-Axes?">
+      <value value="true"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="Reposition-Populations">
       <value value="&quot;By Mean Belief&quot;"/>
@@ -2339,8 +2808,11 @@ NetLogo 6.1.1
     <enumeratedValueSet variable="Population-Pen-Down?">
       <value value="false"/>
     </enumeratedValueSet>
-    <enumeratedValueSet variable="Rounds">
-      <value value="200"/>
+    <enumeratedValueSet variable="Recolor-Populations?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Memory-Length">
+      <value value="2000"/>
     </enumeratedValueSet>
   </experiment>
 </experiments>
