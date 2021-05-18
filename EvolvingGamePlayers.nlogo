@@ -2718,7 +2718,7 @@ NetLogo 6.1.1
 @#$#@#$#@
 <experiments>
   <experiment name="experiment-Amadae" repetitions="20" runMetricsEveryStep="false">
-    <setup>setup-sim</setup>
+    <setup>setup-stochastic-sim</setup>
     <go>go-sim</go>
     <metric>timer</metric>
     <metric>count populations</metric>
