@@ -15,6 +15,8 @@ globals [
   num-pops-with-group1-dom
   num-pops-with-group2-dom
   num-pops-with-groups-equal
+  group1-payoff ; Mean over populations of mean over group members of last payoff received
+  group2-payoff
 
 ]
 
@@ -687,6 +689,8 @@ to go-sim
   set num-pops-with-group1-dom count populations with [x > y]
   set num-pops-with-group2-dom count populations with [x < y]
   set num-pops-with-groups-equal count populations with [x = y]
+  set group1-payoff mean [mean map [pl -> [pl-fitness] of pl] po-group1] of populations
+  set group2-payoff mean [mean map [pl -> [pl-fitness] of pl] po-group2] of populations
 
 ;  if Recolor-Populations? [recolor-pops-by-players]
   if Recolor-Populations? [recolor-pops-by-xy]
@@ -740,10 +744,16 @@ to-report next-x
     report ( (1 - m * delta) * x + m * delta * x * payoff-for-A-move-given-perc 1 y ) /
     ( (1 - m * delta) + m * delta * ((x * payoff-for-A-move-given-perc 1 y) + ((1 - x) * payoff-for-A-move-given-perc 0 y)) )
   ]
+  ; If scored on games against both groups
   ; Needs checking?
-  let z ((perc-group2 * y) + ((100 - perc-group2) * x)) / 100
-  report ( (1 - m * delta) * x + m * delta * x * payoff-for-A-move-given-perc 1 z ) /
-  ( (1 - m * delta) + m * delta * ((x * payoff-for-A-move-given-perc 1 z) + ((1 - x) * payoff-for-A-move-given-perc 0 z)) )
+;  let z ((perc-group2 * y) + ((100 - perc-group2) * x)) / 100
+;  report ( (1 - m * delta) * x + m * delta * x * payoff-for-A-move-given-perc 1 z ) /
+;  ( (1 - m * delta) + m * delta * ((x * payoff-for-A-move-given-perc 1 z) + ((1 - x) * payoff-for-A-move-given-perc 0 z)) )
+
+  ; If scored on games against other group (which occur at a rate dependent on proportion of population in that group.)
+  report ( (1 - m * delta * perc-group2 / 100) * x + m * delta * (perc-group2 / 100) * x * payoff-for-A-move-given-perc 1 y ) /
+  ( (1 - m * delta * perc-group2 / 100) + m * delta * (perc-group2 / 100) * ((x * payoff-for-A-move-given-perc 1 y) + ((1 - x) * payoff-for-A-move-given-perc 0 y)) )
+
 end
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -760,10 +770,15 @@ to-report next-y
     report ( (1 - n * delta) * y + n * delta * y * payoff-for-B-move-given-perc 1 x ) /
     ( (1 - n * delta) + n * delta * ((y * payoff-for-B-move-given-perc 1 x) + ((1 - y) * payoff-for-B-move-given-perc 0 x)) )
   ]
+  ; If scored on games against both groups
   ; Needs checking?
-  let z ((perc-group2 * y) + ((100 - perc-group2) * x)) / 100
-  report ( (1 - n * delta) * y + n * delta * y * payoff-for-B-move-given-perc 1 z ) /
-  ( (1 - n * delta) + n * delta * ((y * payoff-for-B-move-given-perc 1 z) + ((1 - y) * payoff-for-B-move-given-perc 0 z)) )
+;  let z ((perc-group2 * y) + ((100 - perc-group2) * x)) / 100
+;  report ( (1 - n * delta) * y + n * delta * y * payoff-for-B-move-given-perc 1 z ) /
+;  ( (1 - n * delta) + n * delta * ((y * payoff-for-B-move-given-perc 1 z) + ((1 - y) * payoff-for-B-move-given-perc 0 z)) )
+
+  ; If scored on games against other group (which occur at a rate dependent on proportion of population in that group.)
+  report ( (1 - n * delta * ((100 - perc-group2) / 100)) * y + n * delta * ((100 - perc-group2) / 100) * y * payoff-for-B-move-given-perc 1 x ) /
+  ( (1 - n * delta * ((100 - perc-group2) / 100)) + n * delta * ((100 - perc-group2) / 100) * ((y * payoff-for-B-move-given-perc 1 x) + ((1 - y) * payoff-for-B-move-given-perc 0 x)) )
 end
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -818,6 +833,13 @@ to go-eqn
   foreach sorted-populations [po ->
     ask po [rd-move-delta delta]
   ]
+
+  set num-pops-with-group1-dom count populations with [x > y]
+  set num-pops-with-group2-dom count populations with [x < y]
+  set num-pops-with-groups-equal count populations with [x = y]
+  set group1-payoff mean [first payoffs-xy x y] of populations
+  set group2-payoff mean [first payoffs-xy y x] of populations
+
   if Recolor-Populations? [recolor-pops-by-xy]
   tick
 end
@@ -2290,6 +2312,38 @@ Model
 "Bergstrom & Lachmann" "Amadae" "B & L + Hawk & Dove" "B & L + HD + Stochastics" "Amadae + Prior Memory"
 1
 
+MONITOR
+1080
+40
+1172
+85
+NIL
+Group1-Payoff
+1
+1
+11
+
+MONITOR
+1175
+40
+1267
+85
+NIL
+Group2-Payoff
+1
+1
+11
+
+TEXTBOX
+1085
+10
+1265
+36
+Average over Populations of Average over Group Members:
+11
+0.0
+1
+
 @#$#@#$#@
 # Evolving Game Players
 
@@ -2728,8 +2782,8 @@ NetLogo 6.1.1
     <metric>Cost</metric>
     <metric>msne</metric>
     <metric>msne-payoff</metric>
-    <metric>mean [mean map [pl -&gt; [pl-fitness] of pl] po-group1] of populations</metric>
-    <metric>mean [mean map [pl -&gt; [pl-fitness] of pl] po-group2] of populations</metric>
+    <metric>group1-payoff</metric>
+    <metric>group2-payoff</metric>
     <enumeratedValueSet variable="Game">
       <value value="&quot;Hawk-Dove&quot;"/>
     </enumeratedValueSet>
