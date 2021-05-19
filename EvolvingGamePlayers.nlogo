@@ -359,8 +359,8 @@ to Setup-Stochastic-Sim
 
   setup
 
-  foreach (range 0 100 10) [x100 ->
-    foreach (range 0 100 10) [y100 ->
+  foreach (range 0 110 10) [x100 ->
+    foreach (range 0 110 10) [y100 ->
       create-populations 1 [
         set shape "default"
         ;set color yellow
@@ -369,7 +369,7 @@ to Setup-Stochastic-Sim
         set y y100 / 100
         setxy (x-max * x) (y-max * y)
         facexy (x-max * next-x) (y-max * next-y)
-        if Population-Pen-Down? [pen-down]
+;        if Population-Pen-Down? [pen-down]
 
         ; Create Population's players
         set po-players []
@@ -420,9 +420,17 @@ to Setup-Stochastic-Sim
 
   set sorted-populations sort populations
 
+
 ;  recolor-pops-by-players
   reset-ticks
   reposition-pops
+
+  ; Draw paths?
+  if Population-Pen-Down? [
+    foreach sorted-populations [po ->
+      ask po [pen-down]
+    ]
+  ]
 end
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -542,6 +550,11 @@ end
 to-report strategy-reporter
   if playing-strategy = "Last Action" [report [a -> pl-action]]
   if playing-strategy = "Amadae" [report [a -> playing-amadae a]]
+  if playing-strategy = "Amadae 50:50" [report [a -> playing-amadae-50-50 a]]
+  if playing-strategy = "Amadae 1 0" [report [a -> playing-amadae-1-0 a]]
+  if playing-strategy = "Amadae 0 1" [report [a -> playing-amadae-0-1 a]]
+  if playing-strategy = "Amadae 1 1" [report [a -> playing-amadae-1-1 a]]
+  if playing-strategy = "Amadae 0 0" [report [a -> playing-amadae-0-0 a]]
   if playing-strategy = "Amadae2" [report [a -> playing-amadae2 a]]
 
   if playing-strategy = "MSNE" [report [a -> playing-msne]]
@@ -555,6 +568,46 @@ end
 
 to-report playing-amadae [given-alter]
   if pl-group = [pl-group] of given-alter [report playing-msne]
+  report playing-memory
+end
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+to-report playing-amadae-50-50 [given-alter]
+  if pl-group = [pl-group] of given-alter [report playing-msne]
+  if pl-other-interactions = 0 [report random 2]
+  report playing-memory
+end
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+to-report playing-amadae-0-0 [given-alter]
+  if pl-group = [pl-group] of given-alter [report playing-msne]
+  if pl-other-interactions = 0 [report 0]
+  report playing-memory
+end
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+to-report playing-amadae-1-1 [given-alter]
+  if pl-group = [pl-group] of given-alter [report playing-msne]
+  if pl-other-interactions = 0 [report 1]
+  report playing-memory
+end
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+to-report playing-amadae-1-0 [given-alter]
+  if pl-group = [pl-group] of given-alter [report playing-msne]
+  if pl-other-interactions = 0 [report ifelse-value (pl-group = 1) [1] [0]]
+  report playing-memory
+end
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+to-report playing-amadae-0-1 [given-alter]
+  if pl-group = [pl-group] of given-alter [report playing-msne]
+  if pl-other-interactions = 0 [report ifelse-value (pl-group = 1) [0] [1]]
   report playing-memory
 end
 
@@ -1228,7 +1281,7 @@ Value-As-Perc-Of-Cost
 Value-As-Perc-Of-Cost
 0
 100
-80.0
+10.0
 5
 1
 %
@@ -1837,7 +1890,7 @@ CHOOSER
 355
 Playing-Strategy
 Playing-Strategy
-"Last Action" "MSNE" "Memory" "Amadae" "Stochastic Memory" "MSNE / Stoch Memory"
+"Last Action" "MSNE" "Memory" "Amadae" "Amadae 50:50" "Amadae 1 0" "Amadae 0 1" "Amadae 1 1" "Amadae 0 0" "Stochastic Memory" "MSNE / Stoch Memory"
 3
 
 MONITOR
@@ -2235,7 +2288,7 @@ TEXTBOX
 955
 235
 1285
-320
+305
 Initial memory weights:\nThe more past memory a group's members have, the less influence new evidence has on their beliefs.\nIf Group 1 has higher weight than Group 2, Group 1 players update their beliefs (about Group 2's actions and shown on y-axis) slower.
 11
 0.0
