@@ -40,6 +40,7 @@ players-own [
   pl-action
   pl-fitness
   pl-memory
+  pl-memory-length
   pl-other-interactions ; Number of interactions with members of other groups.
   pl-belief ; Number of "1" actions performed against this agent and entered into memory (but doesn't forget).
   pl-history ; Number of "1" actions performed by this agent in personal history.
@@ -397,6 +398,10 @@ to setup-initial-populations
     repeat 10 [setup-population initial-x initial-y]
     stop
   ]
+  if initial-populations = "100 at Initial-X/Y" [
+    repeat 100 [setup-population initial-x initial-y]
+    stop
+  ]
 
   if initial-populations = "1 at MSNE" [
     setup-population (100 * msne) (100 * msne)
@@ -404,6 +409,10 @@ to setup-initial-populations
   ]
   if initial-populations = "10 at MSNE" [
     repeat 10 [setup-population (100 * msne) (100 * msne)]
+    stop
+  ]
+  if initial-populations = "100 at MSNE" [
+    repeat 100 [setup-population (100 * msne) (100 * msne)]
     stop
   ]
 end
@@ -477,6 +486,7 @@ to setup-initial-memory
   ; Run as player.
 
   set pl-memory []
+  set pl-memory-length ifelse-value (pl-group = 1) [Memory-Length-1] [Memory-Length-2]
   ; (Actually, we're currently using belief instead of memory.)
   if memory-initialization = "Empty" [
     set pl-belief 0
@@ -576,12 +586,19 @@ to update-after-match [given-player given-opponent opponents-action players-payo
   set pl-fitness players-payoff ; For evolutionary dynamics
   ;set pl-fitness pl-fitness + players-payoff ; For evolutionary dynamics
   if pl-group != [pl-group] of given-opponent [
+    ifelse Unlimited-Memory? [
     ; Only remembering interactions with other groups.
-    ;set pl-memory fput (list alter-action ego-action ego-payoff alter) sublist pl-memory 0 (min (list (length pl-memory) memory-length)) ; For cultural models
-    ; If using "unlimited" memory, then storing in pl-memory is a waste. Better to just keep a count.
-    set pl-belief pl-belief + opponents-action ; NB: Updating beliefs during the round. Ego could now become an opponent in this same round, and base actions on this updated belief.
-    set pl-history pl-history + pl-action
-    set pl-other-interactions pl-other-interactions + 1
+      set pl-memory fput (list opponents-action pl-action players-payoff given-opponent) sublist pl-memory 0 (min (list (length pl-memory) pl-memory-length)) ; For cultural models
+      set pl-belief sum map [m -> first m] pl-memory
+      set pl-history sum map [m -> item 1 m] pl-memory
+      set pl-other-interactions length pl-memory
+    ]
+    [
+      ; If using "unlimited" memory, then storing in pl-memory is a waste. Better to just keep a count.
+      set pl-belief pl-belief + opponents-action ; NB: Updating beliefs during the round. Ego could now become an opponent in this same round, and base actions on this updated belief.
+      set pl-history pl-history + pl-action
+      set pl-other-interactions pl-other-interactions + 1
+    ]
   ]
 
 end
@@ -1007,6 +1024,9 @@ to-report model-amadae
       ["Memory-Initialization" "Empty"]
       ["Memory-Initial-Weight-1" 10]
       ["Memory-Initial-Weight-2" 10]
+;      ["Memory-Length-1" 10]
+;      ["Memory-Length-2" 10]
+      ["Unlimited-Memory?" true]
       ["Playing-Noise" 0]
       ["Replicate?" false]
       ["Replication-Noise" 0]
@@ -1026,7 +1046,6 @@ to-report model-amadae
       ["Reposition-Populations" "By Mean Belief"]
       ["Population-Pen-Down?" false]
       ["Recolor-Populations?" false]
-      ["Memory-Length" 2000]
       ["Player-Pen-Down?" false]
       ["Hide-Populations?" false]
       ["Hide-Players?" true]
@@ -1056,6 +1075,9 @@ to-report model-amadae-prior-memory
       ["Memory-Initialization" "Fixed-Proportion-xy"]
       ["Memory-Initial-Weight-1" 10]
       ["Memory-Initial-Weight-2" 40]
+;      ["Memory-Length-1" 10]
+;      ["Memory-Length-2" 10]
+      ["Unlimited-Memory?" true]
       ["Playing-Noise" 0]
       ["Replicate?" false]
       ["Replication-Noise" 0]
@@ -1075,7 +1097,6 @@ to-report model-amadae-prior-memory
       ["Reposition-Populations" "By Mean Belief"]
       ["Population-Pen-Down?" true]
       ["Recolor-Populations?" false]
-      ["Memory-Length" 2000]
       ["Player-Pen-Down?" false]
       ["Hide-Populations?" false]
       ["Hide-Players?" true]
@@ -1105,6 +1126,9 @@ to-report model-bergstrom-lachmann
 ;      ["Memory-Initialization" "Empty"]
 ;      ["Memory-Initial-Weight-1" 10]
 ;      ["Memory-Initial-Weight-2" 10]
+;      ["Memory-Length-1" 10]
+;      ["Memory-Length-2" 10]
+;      ["Unlimited-Memory?" true]
 ;      ["Playing-Noise" 0]
 ;      ["Replicate?" false]
 ;      ["Replication-Noise" 0]
@@ -1124,7 +1148,6 @@ to-report model-bergstrom-lachmann
       ["Reposition-Populations" "By Mean Action"]
       ["Population-Pen-Down?" true]
       ["Recolor-Populations?" false]
-      ["Memory-Length" 2000]
       ["Player-Pen-Down?" false]
       ["Hide-Populations?" false]
       ["Hide-Players?" true]
@@ -1154,6 +1177,9 @@ to-report model-bergstrom-lachmann-hd
 ;      ["Memory-Initialization" "Empty"]
 ;      ["Memory-Initial-Weight-1" 10]
 ;      ["Memory-Initial-Weight-2" 10]
+;      ["Memory-Length-1" 10]
+;      ["Memory-Length-2" 10]
+;      ["Unlimited-Memory?" true]
 ;      ["Playing-Noise" 0]
 ;      ["Replicate?" false]
 ;      ["Replication-Noise" 0]
@@ -1173,7 +1199,6 @@ to-report model-bergstrom-lachmann-hd
       ["Reposition-Populations" "By Mean Action"]
       ["Population-Pen-Down?" true]
       ["Recolor-Populations?" false]
-      ["Memory-Length" 2000]
       ["Player-Pen-Down?" false]
       ["Hide-Populations?" false]
       ["Hide-Players?" true]
@@ -1205,6 +1230,9 @@ to-report model-bergstrom-lachmann-hd-stochastic
 ;      ["Memory-Initialization" "Empty"]
 ;      ["Memory-Initial-Weight-1" 10]
 ;      ["Memory-Initial-Weight-2" 10]
+;      ["Memory-Length-1" 10]
+;      ["Memory-Length-2" 10]
+;      ["Unlimited-Memory?" true]
 ;      ["Playing-Noise" 0]
       ["Replicate?" true]
       ["Replication-Noise" 0]
@@ -1224,7 +1252,6 @@ to-report model-bergstrom-lachmann-hd-stochastic
       ["Reposition-Populations" "By Mean Action"]
       ["Population-Pen-Down?" false]
       ["Recolor-Populations?" false]
-      ["Memory-Length" 2000]
       ["Player-Pen-Down?" false]
       ["Hide-Populations?" false]
       ["Hide-Players?" true]
@@ -1972,10 +1999,10 @@ This program (C) Christopher J Watts, 2021.
 INPUTBOX
 1295
 220
-1447
+1405
 280
-Memory-Length
-2000.0
+Memory-Length-1
+10.0
 1
 0
 Number
@@ -2222,7 +2249,7 @@ CHOOSER
 Memory-Initialization
 Memory-Initialization
 "Empty" "Random-50:50" "Random-MSNE" "Random-xy" "Fixed-Proportion-50:50" "Fixed-Proportion-MSNE" "Fixed-Proportion-xy"
-0
+6
 
 INPUTBOX
 955
@@ -2256,16 +2283,6 @@ Memory-Initial-Weight-2
 1
 0
 Number
-
-TEXTBOX
-1295
-200
-1445
-218
-(Not currently used)
-11
-0.0
-1
 
 SLIDER
 680
@@ -2501,8 +2518,8 @@ CHOOSER
 165
 Initial-Populations
 Initial-Populations
-"11x11 Evenly Spaced" "1 at Initial-X/Y" "10 at Initial-X/Y" "1 at MSNE" "10 at MSNE"
-0
+"11x11 Evenly Spaced" "1 at Initial-X/Y" "10 at Initial-X/Y" "100 at Initial-X/Y" "1 at MSNE" "10 at MSNE" "100 at MSNE"
+3
 
 SLIDER
 1135
@@ -2566,6 +2583,28 @@ Player-Pen-Down?
 1
 1
 -1000
+
+SWITCH
+1295
+285
+1452
+318
+Unlimited-Memory?
+Unlimited-Memory?
+0
+1
+-1000
+
+INPUTBOX
+1410
+220
+1520
+280
+Memory-Length-2
+10.0
+1
+0
+Number
 
 @#$#@#$#@
 # Evolving Game Players
@@ -3024,6 +3063,15 @@ NetLogo 6.1.1
       <value value="&quot;Amadae&quot;"/>
       <value value="&quot;MSNE&quot;"/>
     </enumeratedValueSet>
+    <enumeratedValueSet variable="Initial-Populations">
+      <value value="&quot;100 at Initial-X/Y&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Initial-X">
+      <value value="50"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Initial-Y">
+      <value value="50"/>
+    </enumeratedValueSet>
     <enumeratedValueSet variable="Memory-Initialization">
       <value value="&quot;Empty&quot;"/>
     </enumeratedValueSet>
@@ -3032,6 +3080,15 @@ NetLogo 6.1.1
     </enumeratedValueSet>
     <enumeratedValueSet variable="Memory-Initial-Weight-2">
       <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Memory-Length-1">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Memory-Length-2">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Unlimited-Memory?">
+      <value value="true"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="Playing-Noise">
       <value value="0"/>
@@ -3087,9 +3144,6 @@ NetLogo 6.1.1
     </enumeratedValueSet>
     <enumeratedValueSet variable="Recolor-Populations?">
       <value value="false"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="Memory-Length">
-      <value value="2000"/>
     </enumeratedValueSet>
   </experiment>
   <experiment name="experiment-Amadae-EmptyMemoryRules" repetitions="1" sequentialRunOrder="false" runMetricsEveryStep="false">
@@ -3127,6 +3181,15 @@ NetLogo 6.1.1
       <value value="&quot;Amadae 50:50&quot;"/>
       <value value="&quot;MSNE&quot;"/>
     </enumeratedValueSet>
+    <enumeratedValueSet variable="Initial-Populations">
+      <value value="&quot;100 at Initial-X/Y&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Initial-X">
+      <value value="50"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Initial-Y">
+      <value value="50"/>
+    </enumeratedValueSet>
     <enumeratedValueSet variable="Memory-Initialization">
       <value value="&quot;Empty&quot;"/>
     </enumeratedValueSet>
@@ -3135,6 +3198,15 @@ NetLogo 6.1.1
     </enumeratedValueSet>
     <enumeratedValueSet variable="Memory-Initial-Weight-2">
       <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Memory-Length-1">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Memory-Length-2">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Unlimited-Memory?">
+      <value value="true"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="Playing-Noise">
       <value value="0"/>
@@ -3190,9 +3262,6 @@ NetLogo 6.1.1
     </enumeratedValueSet>
     <enumeratedValueSet variable="Recolor-Populations?">
       <value value="false"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="Memory-Length">
-      <value value="2000"/>
     </enumeratedValueSet>
   </experiment>
   <experiment name="experiment-Amadae-PriorBeliefs" repetitions="1" sequentialRunOrder="false" runMetricsEveryStep="false">
@@ -3224,6 +3293,11 @@ NetLogo 6.1.1
     <enumeratedValueSet variable="Playing-Strategy">
       <value value="&quot;Amadae&quot;"/>
     </enumeratedValueSet>
+    <enumeratedValueSet variable="Initial-Populations">
+      <value value="&quot;100 at Initial-X/Y&quot;"/>
+    </enumeratedValueSet>
+    <steppedValueSet variable="Initial-X" first="0" step="10" last="100"/>
+    <steppedValueSet variable="Initial-Y" first="0" step="10" last="100"/>
     <enumeratedValueSet variable="Memory-Initialization">
       <value value="&quot;Fixed-Proportion-xy&quot;"/>
     </enumeratedValueSet>
@@ -3234,6 +3308,15 @@ NetLogo 6.1.1
       <value value="10"/>
       <value value="20"/>
       <value value="40"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Memory-Length-1">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Memory-Length-2">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Unlimited-Memory?">
+      <value value="true"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="Playing-Noise">
       <value value="0"/>
@@ -3290,8 +3373,125 @@ NetLogo 6.1.1
     <enumeratedValueSet variable="Recolor-Populations?">
       <value value="false"/>
     </enumeratedValueSet>
-    <enumeratedValueSet variable="Memory-Length">
-      <value value="2000"/>
+  </experiment>
+  <experiment name="experiment-Amadae-EmptyMemoryRules-LimitMemory" repetitions="1" sequentialRunOrder="false" runMetricsEveryStep="false">
+    <setup>setup-stochastic-sim</setup>
+    <go>go-sim</go>
+    <metric>timer</metric>
+    <metric>count populations</metric>
+    <metric>num-pops-with-group1-dom</metric>
+    <metric>num-pops-with-group2-dom</metric>
+    <metric>num-pops-with-groups-equal</metric>
+    <metric>Cost</metric>
+    <metric>msne</metric>
+    <metric>msne-payoff</metric>
+    <metric>group1-payoff</metric>
+    <metric>group2-payoff</metric>
+    <enumeratedValueSet variable="Game">
+      <value value="&quot;Hawk-Dove&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Rounds">
+      <value value="200"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Population-Size">
+      <value value="200"/>
+    </enumeratedValueSet>
+    <steppedValueSet variable="Perc-Group2" first="10" step="10" last="90"/>
+    <enumeratedValueSet variable="Opponents-Include-Own-Group?">
+      <value value="true"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Playing-Strategy">
+      <value value="&quot;Amadae&quot;"/>
+      <value value="&quot;Amadae 0 0&quot;"/>
+      <value value="&quot;Amadae 0 1&quot;"/>
+      <value value="&quot;Amadae 1 0&quot;"/>
+      <value value="&quot;Amadae 1 1&quot;"/>
+      <value value="&quot;Amadae 50:50&quot;"/>
+      <value value="&quot;MSNE&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Initial-Populations">
+      <value value="&quot;100 at Initial-X/Y&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Initial-X">
+      <value value="50"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Initial-Y">
+      <value value="50"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Memory-Initialization">
+      <value value="&quot;Empty&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Memory-Initial-Weight-1">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Memory-Initial-Weight-2">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Memory-Length-1">
+      <value value="1"/>
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Memory-Length-2">
+      <value value="1"/>
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Unlimited-Memory?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Playing-Noise">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Replicate?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Replication-Noise">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Speed-1">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Speed-2">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Delta">
+      <value value="0.1"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Value">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <steppedValueSet variable="Value-As-Perc-Of-Cost" first="10" step="10" last="90"/>
+    <enumeratedValueSet variable="Punishment">
+      <value value="1"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Reward">
+      <value value="3"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Sucker">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Temptation">
+      <value value="5"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="k">
+      <value value="1.5"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="My-Preference">
+      <value value="40"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Your-Preference">
+      <value value="20"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Draw-X-And-Y-Axes?">
+      <value value="true"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Reposition-Populations">
+      <value value="&quot;By Mean Belief&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Population-Pen-Down?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Recolor-Populations?">
+      <value value="false"/>
     </enumeratedValueSet>
   </experiment>
 </experiments>
