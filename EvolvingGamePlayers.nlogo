@@ -530,8 +530,14 @@ to setup-initial-memory
     set prob mean map [pl -> [pl-action] of pl] ifelse-value (pl-group = 1) [[po-group2] of pl-population] [[po-group1] of pl-population]
   ]
 
-  ; (NetLogo doesn't have a random-binomial procedure, sum bernoulli trials instead.)
-  set pl-belief sum n-values pl-other-interactions [ifelse-value (prob > random-float 1) [1] [0]]
+  ifelse unlimited-memory? [
+    ; (NetLogo doesn't have a random-binomial procedure, sum bernoulli trials instead.)
+    set pl-belief sum n-values pl-other-interactions [ifelse-value (prob > random-float 1) [1] [0]]
+  ]
+  [
+    set pl-memory n-values pl-other-interactions [ifelse-value (prob > random-float 1) [1] [0]]
+    set pl-belief sum pl-memory
+  ]
 end
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -586,7 +592,7 @@ to update-after-match [given-player given-opponent opponents-action players-payo
   set pl-fitness players-payoff ; For evolutionary dynamics
   ;set pl-fitness pl-fitness + players-payoff ; For evolutionary dynamics
   if pl-group != [pl-group] of given-opponent [
-    ifelse Unlimited-Memory? [
+    ifelse not Unlimited-Memory? [
     ; Only remembering interactions with other groups.
       set pl-memory fput (list opponents-action pl-action players-payoff given-opponent) sublist pl-memory 0 (min (list (length pl-memory) pl-memory-length)) ; For cultural models
       set pl-belief sum map [m -> first m] pl-memory
@@ -1405,7 +1411,7 @@ Value-As-Perc-Of-Cost
 Value-As-Perc-Of-Cost
 0
 100
-80.0
+10.0
 5
 1
 %
@@ -1709,7 +1715,7 @@ SWITCH
 503
 Population-Pen-Down?
 Population-Pen-Down?
-1
+0
 1
 -1000
 
@@ -2477,7 +2483,7 @@ CHOOSER
 Model
 Model
 "Bergstrom & Lachmann" "Amadae" "B & L + Hawk & Dove" "B & L + HD + Stochastics" "Amadae + Prior Memory"
-1
+4
 
 MONITOR
 1080
@@ -2519,7 +2525,7 @@ CHOOSER
 Initial-Populations
 Initial-Populations
 "11x11 Evenly Spaced" "1 at Initial-X/Y" "10 at Initial-X/Y" "100 at Initial-X/Y" "1 at MSNE" "10 at MSNE" "100 at MSNE"
-3
+0
 
 SLIDER
 1135
