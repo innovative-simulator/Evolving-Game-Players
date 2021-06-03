@@ -73,6 +73,7 @@ end
 
 to-report payoffs [a-move b-move]
   if game = "Hawk-Dove" [report payoffs-hawk-dove a-move b-move]
+  if game = "Hawk-Dove Optimal" [report payoffs-hawk-dove-optimal a-move b-move]
   if game = "Mutualism" [report payoffs-mutualism a-move b-move]
   if game = "Prisoner's Dilemma" [report payoffs-Prisoners-Dilemma a-move b-move]
   if game = "Donation" [report payoffs-donation a-move b-move]
@@ -100,6 +101,17 @@ to-report Payoffs-Hawk-Dove [A-Move B-Move]
     (list value 0) ; Hawk-Dove
     (list ((value - cost) / 2) ((value - cost) / 2)) ; Hawk-Hawk
     )
+end
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+to-report Payoffs-Hawk-Dove-Optimal [A-Move B-Move]
+  let cur-payoffs Payoffs-Hawk-Dove a-move b-move
+  report ifelse-value (first Payoffs-Hawk-Dove a-move b-move >= first Payoffs-Hawk-Dove (1 - a-move) b-move) [
+    ifelse-value (last Payoffs-Hawk-Dove a-move b-move >= last Payoffs-Hawk-Dove a-move (1 - b-move)) [[1 1]] [[1 0]]
+  ] [
+    ifelse-value (last Payoffs-Hawk-Dove a-move b-move >= last Payoffs-Hawk-Dove a-move (1 - b-move)) [[0 1]] [[0 0]]
+  ]
 end
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -390,6 +402,15 @@ to setup-initial-populations
     stop
   ]
 
+  if initial-populations = "6x6 Evenly Spaced" [
+    foreach (range 0 120 20) [x100 ->
+      foreach (range 0 120 20) [y100 ->
+        setup-population x100 y100
+      ]
+    ]
+    stop
+  ]
+
   if initial-populations = "1 at Initial-X/Y" [
     setup-population initial-x initial-y
     stop
@@ -535,8 +556,14 @@ to setup-initial-memory
     set pl-belief sum n-values pl-other-interactions [ifelse-value (prob > random-float 1) [1] [0]]
   ]
   [
-    set pl-memory n-values pl-other-interactions [ifelse-value (prob > random-float 1) [1] [0]]
-    set pl-belief sum pl-memory
+    ; (list opponents-action pl-action players-payoff given-opponent)
+    set pl-memory (map [[x1 x2 x3 x4] -> (list x1 x2 x3 x4)]
+      (n-values pl-other-interactions [ifelse-value (prob > random-float 1) [1] [0]])
+      (n-values pl-other-interactions [[]]) ; Not in use yet.
+      (n-values pl-other-interactions [0]) ; Not in use yet.
+      (n-values pl-other-interactions [nobody]) ; Not in use yet.
+      )
+    set pl-belief sum map [a -> first a] pl-memory
   ]
 end
 
@@ -619,12 +646,13 @@ to-report strategy-reporter
   if playing-strategy = "Amadae 0 1" [report [a -> playing-amadae-0-1 a]]
   if playing-strategy = "Amadae 1 1" [report [a -> playing-amadae-1-1 a]]
   if playing-strategy = "Amadae 0 0" [report [a -> playing-amadae-0-0 a]]
-  if playing-strategy = "Amadae2" [report [a -> playing-amadae2 a]]
+  if playing-strategy = "MSNE / Stoch Memory" [report [a -> playing-amadae2 a]]
 
   if playing-strategy = "MSNE" [report [a -> playing-msne]]
   if playing-strategy = "Memory" [report [a -> playing-memory]]
   if playing-strategy = "Stochastic Memory" [report [a -> playing-memory-stochastic]]
 
+  user-message (word "Warning! Playing-Strategy " playing-strategy " was not identified.")
   report [-> pl-action]
 end
 
@@ -732,8 +760,8 @@ to-report playing-memory-stochastic
   let a (p * first payoffs 0 1) + ((1 - p) * first payoffs 0 0)
   let b (p * first payoffs 1 1) + ((1 - p) * first payoffs 1 0)
 
-  if a > random-float (a + b) [report 1]
-  report 0
+  if a > random-float (a + b) [report 0]
+  report 1
 end
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -747,13 +775,30 @@ to replicate
     ask po [
       let num-updating-1 round (m * length po-group1)
       let num-updating-2 round (n * length po-group2)
-      let sampled-strategies1 map [af -> [pl-action] of last af] rnd:weighted-n-of-list-with-repeats num-updating-1 (map [a -> (list ([pl-fitness + fitness-corrective] of a) a)] po-group1) [af -> first af]
-      let sampled-strategies2 map [af -> [pl-action] of last af] rnd:weighted-n-of-list-with-repeats num-updating-2 (map [a -> (list ([pl-fitness + fitness-corrective] of a) a)] po-group2) [af -> first af]
-      (foreach (n-of num-updating-1 po-group1) sampled-strategies1 [[pl strat] ->
-        ask pl [set pl-action ifelse-value (replication-noise > random-float 100) [1 - strat] [strat]]
+      let sampled-players rnd:weighted-n-of-list-with-repeats num-updating-1 (map [a -> (list ([pl-fitness + fitness-corrective] of a) a)] po-group1) [af -> first af]
+      let sampled-strategies map [af -> [(list pl-action pl-belief pl-other-interactions (map [a -> a] pl-memory) pl-history pl-fitness)] of last af] sampled-players
+      (foreach (n-of num-updating-1 po-group1) sampled-strategies [[pl strat] ->
+        ask pl [
+          set pl-action ifelse-value (replication-noise > random-float 100) [1 - item 0 strat] [item 0 strat]
+          set pl-belief item 1 strat
+          set pl-other-interactions item 2 strat
+          set pl-memory item 3 strat
+          set pl-history item 4 strat
+          set pl-fitness item 5 strat
+        ]
       ])
-      (foreach (n-of num-updating-2 po-group2) sampled-strategies2 [[pl strat] ->
-        ask pl [set pl-action ifelse-value (replication-noise > random-float 100) [1 - strat] [strat]]
+
+      set sampled-players rnd:weighted-n-of-list-with-repeats num-updating-2 (map [a -> (list ([pl-fitness + fitness-corrective] of a) a)] po-group2) [af -> first af]
+      set sampled-strategies map [af -> [(list pl-action pl-belief pl-other-interactions (map [a -> a] pl-memory) pl-history pl-fitness)] of last af] sampled-players
+      (foreach (n-of num-updating-2 po-group2) sampled-strategies [[pl strat] ->
+        ask pl [
+          set pl-action ifelse-value (replication-noise > random-float 100) [1 - item 0 strat] [item 0 strat]
+          set pl-belief item 1 strat
+          set pl-other-interactions item 2 strat
+          set pl-memory item 3 strat
+          set pl-history item 4 strat
+          set pl-fitness item 5 strat
+        ]
       ])
     ]
   ]
@@ -778,8 +823,8 @@ end
 to re-position-pops-by-beliefs
   foreach sorted-populations [po ->
     ask po [
-      set y mean map [a -> [ifelse-value (pl-other-interactions = 0) [msne] [pl-belief / pl-other-interactions]] of a] po-group1 ; y is G1's belief about G2.
-      set x mean map [a -> [ifelse-value (pl-other-interactions = 0) [msne] [pl-belief / pl-other-interactions]] of a] po-group2 ; x is G2's belief about G1.
+      set y mean map [a -> [ifelse-value (pl-other-interactions = 0) [[y] of myself] [pl-belief / pl-other-interactions]] of a] po-group1 ; y is G1's belief about G2.
+      set x mean map [a -> [ifelse-value (pl-other-interactions = 0) [[x] of myself] [pl-belief / pl-other-interactions]] of a] po-group2 ; x is G2's belief about G1.
 
       setxy (x-max * x) (y-max * y)
       facexy (x-max * next-x) (y-max * next-y)
@@ -860,7 +905,7 @@ to Replicator-Dynamics-By-Equation
         set y y100 / 100
         let x-dot rd-x-dot
         let y-dot rd-y-dot
-        facexy (xcor + x-max * x-dot) (ycor + y-max * y-dot)
+;        facexy (xcor + x-max * x-dot) (ycor + y-max * y-dot)
         facexy (x-max * next-x) (y-max * next-y)
 ;        pen-down
         if Population-Pen-Down? [pen-down]
@@ -996,6 +1041,7 @@ to setup-model
 
   if model = "Amadae" [set scen model-amadae]
   if model = "Amadae + Prior Memory" [set scen model-amadae-prior-memory]
+  if model = "Amadae + Prior Limited Memory" [set scen model-amadae-prior-limited-memory]
   if model = "Bergstrom & Lachmann" [set scen model-bergstrom-lachmann]
   if model = "B & L + Hawk & Dove" [set scen model-bergstrom-lachmann-HD]
   if model = "B & L + HD + Stochastics" [set scen model-bergstrom-lachmann-HD-stochastic]
@@ -1040,7 +1086,7 @@ to-report model-amadae
       ["Speed-2" 10]
       ["Delta" 0.1]
       ["Value" 10]
-      ["Value-As-Perc-Of-Cost" 80]
+      ["Value-As-Perc-Of-Cost" 10]
       ["Punishment" 1]
       ["Reward" 3]
       ["Sucker" 0]
@@ -1072,7 +1118,7 @@ to-report model-amadae-prior-memory
       ["Game" "Hawk-Dove"]
       ["Rounds" 200]
       ["Population-Size" 200]
-      ["Perc-Group2" 50]
+      ["Perc-Group2" 80]
       ["Opponents-Include-Own-Group?" true]
       ["Playing-Strategy" "Amadae"]
       ["Initial-Populations" "11x11 Evenly Spaced"]
@@ -1080,7 +1126,7 @@ to-report model-amadae-prior-memory
 ;      ["Initial-Y" 10]
       ["Memory-Initialization" "Fixed-Proportion-xy"]
       ["Memory-Initial-Weight-1" 10]
-      ["Memory-Initial-Weight-2" 40]
+      ["Memory-Initial-Weight-2" 10]
 ;      ["Memory-Length-1" 10]
 ;      ["Memory-Length-2" 10]
       ["Unlimited-Memory?" true]
@@ -1091,7 +1137,58 @@ to-report model-amadae-prior-memory
       ["Speed-2" 10]
       ["Delta" 0.1]
       ["Value" 10]
-      ["Value-As-Perc-Of-Cost" 80]
+      ["Value-As-Perc-Of-Cost" 10]
+      ["Punishment" 1]
+      ["Reward" 3]
+      ["Sucker" 0]
+      ["Temptation" 5]
+      ["k" 1.5]
+      ["My-Preference" 40]
+      ["Your-Preference" 20]
+      ["Draw-X-And-Y-Axes?" true]
+      ["Reposition-Populations" "By Mean Belief"]
+      ["Population-Pen-Down?" true]
+      ["Recolor-Populations?" false]
+      ["Player-Pen-Down?" false]
+      ["Hide-Populations?" false]
+      ["Hide-Players?" true]
+    )
+    "setup-stochastic-sim"
+  )
+end
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+to-report model-amadae-prior-limited-memory
+  ; Amadae's rules, but players have prior memories.
+  ; Group 2 has more prior memory than Group 1,
+  ; and so will learn / update slower.
+
+  report (list
+    (list
+      ["Game" "Hawk-Dove"]
+      ["Rounds" 200]
+      ["Population-Size" 200]
+      ["Perc-Group2" 80]
+      ["Opponents-Include-Own-Group?" true]
+      ["Playing-Strategy" "Amadae"]
+      ["Initial-Populations" "11x11 Evenly Spaced"]
+;      ["Initial-X" 10]
+;      ["Initial-Y" 10]
+      ["Memory-Initialization" "Random-xy"]
+      ["Memory-Initial-Weight-1" 10]
+      ["Memory-Initial-Weight-2" 10]
+      ["Memory-Length-1" 10]
+      ["Memory-Length-2" 10]
+      ["Unlimited-Memory?" false]
+      ["Playing-Noise" 0]
+      ["Replicate?" false]
+      ["Replication-Noise" 0]
+      ["Speed-1" 10]
+      ["Speed-2" 10]
+      ["Delta" 0.1]
+      ["Value" 10]
+      ["Value-As-Perc-Of-Cost" 10]
       ["Punishment" 1]
       ["Reward" 3]
       ["Sucker" 0]
@@ -1142,7 +1239,7 @@ to-report model-bergstrom-lachmann
       ["Speed-2" 30]
       ["Delta" 0.1]
       ["Value" 10]
-      ["Value-As-Perc-Of-Cost" 80]
+      ["Value-As-Perc-Of-Cost" 10]
       ["Punishment" 1]
       ["Reward" 3]
       ["Sucker" 0]
@@ -1193,7 +1290,7 @@ to-report model-bergstrom-lachmann-hd
       ["Speed-2" 30]
       ["Delta" 0.1]
       ["Value" 10]
-      ["Value-As-Perc-Of-Cost" 80]
+      ["Value-As-Perc-Of-Cost" 10]
       ["Punishment" 1]
       ["Reward" 3]
       ["Sucker" 0]
@@ -1246,7 +1343,7 @@ to-report model-bergstrom-lachmann-hd-stochastic
       ["Speed-2" 30]
       ["Delta" 0.1]
       ["Value" 10]
-      ["Value-As-Perc-Of-Cost" 80]
+      ["Value-As-Perc-Of-Cost" 10]
       ["Punishment" 1]
       ["Reward" 3]
       ["Sucker" 0]
@@ -1485,7 +1582,7 @@ CHOOSER
 205
 Game
 Game
-"Hawk-Dove" "Prisoner's Dilemma" "Mutualism" "Donation"
+"Hawk-Dove" "Prisoner's Dilemma" "Mutualism" "Donation" "Hawk-Dove Optimal"
 0
 
 SLIDER
@@ -2250,7 +2347,7 @@ Key:\nAxes range from 0 (all Dove) to 1 (all Hawk).\nMean-Belief:\nx represents 
 CHOOSER
 955
 170
-1132
+1130
 215
 Memory-Initialization
 Memory-Initialization
@@ -2482,8 +2579,8 @@ CHOOSER
 115
 Model
 Model
-"Bergstrom & Lachmann" "Amadae" "B & L + Hawk & Dove" "B & L + HD + Stochastics" "Amadae + Prior Memory"
-4
+"Bergstrom & Lachmann" "Amadae" "B & L + Hawk & Dove" "B & L + HD + Stochastics" "Amadae + Prior Memory" "Amadae + Prior Limited Memory"
+1
 
 MONITOR
 1080
@@ -2524,8 +2621,8 @@ CHOOSER
 165
 Initial-Populations
 Initial-Populations
-"11x11 Evenly Spaced" "1 at Initial-X/Y" "10 at Initial-X/Y" "100 at Initial-X/Y" "1 at MSNE" "10 at MSNE" "100 at MSNE"
-0
+"11x11 Evenly Spaced" "6x6 Evenly Spaced" "1 at Initial-X/Y" "10 at Initial-X/Y" "100 at Initial-X/Y" "1 at MSNE" "10 at MSNE" "100 at MSNE"
+1
 
 SLIDER
 1135
@@ -2536,7 +2633,7 @@ Initial-X
 Initial-X
 0
 100
-10.0
+50.0
 5
 1
 %
@@ -2551,7 +2648,7 @@ Initial-Y
 Initial-Y
 0
 100
-10.0
+50.0
 5
 1
 %
