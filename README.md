@@ -1,8 +1,27 @@
 # Evolving-Game-Players
-A NetLogo program for evolving populations of Game Theoretic players via replication and cultural learning.
+
+This page brings together various programs exploring the evolutionary dynamics of game theory agents. There is currently one program in NetLogo, EvolvingGamePlayers.nlogo, that reproduces a variety of models, plus two Excel workbooks that provide simpler versions of the models.
+
+## ReactiveLearningXL.xlsx
+
+This implements a model by Amadae & Watts (in preparation), which builds on the cultural evolution models of Axtell et al. (2001), and O'Connor (2017). Whereas previous models have employed the Nash Demand Game, this applies the same agent decision mechanisms to the Hawk & Dove Binary Game.
+
+Players belong to one of two groups. Players maintain memories of what moves have been played by their opponents in their other group, and use this information when planning their next move against a member of the other group. If the two groups differ in size, then the minority group will acquire these memories of the other, majority, group faster, and thus may differ from the majority in their ability to adapt. A "Red Queen effect" occurs when the faster adapting group comes to dominate. (In Hawk & Dove, a dominant group plays Hawk against its opponent's Dove.) A "Red King effect" occurs when the slower adapting group comes to dominate.
+
+Players with memories can employ these memories as expectations about how an opponent from the other group will behave in a new match. Players choose the move with the maximum expected payoff. Players may be initialised with empty memories - in which case they choose a random first move. The probability of playing "Hawk" on this first move is then a parameter. E.g. one can set it to the Mixed Strategy Nash Equilibrium (MSNE). Alternatively, players can be initialised with memories of a number of past matches ("prior beliefs"), of which a given proportion saw opponents play Hawk. Larger prior memories weight the player's expectations towards the influence of the past, and reduce the influence of newly experienced matches. The two groups of players can differ in these initial weights and initial beliefs. Try starting at the (0.5, 0.5) position and compare weights = 10 with weights = 0 (the empty memory condition). Where do the two groups end up? Who dominates, the majority or the minority group? What effect does changing the payoff parameters (especially Value-As-%-Cost)?
+
+NB: This is a stochastic simulation - its processes use random numbers. Hit the F9 key to force Excel to recalculate with a fresh stream of random numbers.
+
+## ReplicatorDynamicsXL.xlsx
+
+This is an extension of the replicator dynamics model of Bergstrom & Lachmann (2003). In this version, the game is the Hawk & Dove Binary Game. In addition, players can play against members of both their own group and the other group. Thus, two different-sized groups may differ in the rates with which they adapt to each other. Each group of players is represented by a single variable, denoting the proportion of players in that group playing "Hawk". Updates for each generation of players are performed deterministically according to replicator dynamics equations. 
+
+## EvolvingGamePlayers.nlogo
+
+EvolvingGamePlayers.nlogo is a NetLogo program for evolving populations of Game Theoretic players via replication and cultural learning.
 Binary games covered include the Priosner's Dilemma, Hawk & Dove, and Mutualism. 
 
-This program (C) Christopher J. Watts, 2021. Note the licensing information.
+All programs (C) Christopher J. Watts, 2021. Note the licensing information.
 
 Three types of evolutionary dynamics are provided within the same NetLogo program:
 * __Equation-based replicator population dynamics__ : Populations of game strategies, divided into two groups (or "species") is updated using population dynamics equations to determine the relative proportions of strategies in the next generation.
@@ -19,6 +38,11 @@ On opening the model in NetLogo, the Info tab will contain more information and 
 
 ## References
 Amadae, S.M. (2020) “Binary Labels Reinforce Systemic Discrimination”. Noema, November 17 2020. https://www.noemamag.com/binary-labels-reinforce-systemic-discrimination/
+
+Amadae, Sonja M. & Watts, Christopher J. (in preparation) "Red Queen and Red King Effects in Cultural Agent Based Modelling Compared to Evolutionary Replicator Dynamics".
+
+Axtell, Robert L., Joshua M. Epstein, and H. Peyton Young (2001) "The emergence of
+classes in a multiagent bargaining model." Social dynamics 27: 191-211.
 
 Bergstrom, C. T., & Lachmann, M. (2003). The Red King effect: When the slowest runner wins the coevolutionary race. Proceedings of the National Academy of Sciences, 100(2), 593-598. doi:10.1073/pnas.0134966100
 
