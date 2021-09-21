@@ -114,9 +114,11 @@ to-report payoffs [a-move b-move]
   if game = "Hawk-Dove" [report payoffs-hawk-dove a-move b-move]
   if game = "Hawk-Dove Optimal" [report payoffs-hawk-dove-optimal a-move b-move]
   if game = "Mutualism" [report payoffs-mutualism a-move b-move]
+  if game = "Mini Nash Demand" [report payoffs-mini-nash-demand a-move b-move]
   if game = "Prisoner's Dilemma" [report payoffs-Prisoners-Dilemma a-move b-move]
   if game = "Donation" [report payoffs-donation a-move b-move]
-  if game = "Battle of the Sexes" [report payoffs-battle-of-the-sexes a-move b-move]
+  ;  if game = "Battle of the Sexes" [report payoffs-battle-of-the-sexes a-move b-move ([pl-group] of ego) ([pl-group] of alter)]
+    if game = "Battle of the Sexes" [report payoffs-battle-of-the-sexes a-move b-move 1 2]
   report false
 end
 
@@ -155,6 +157,23 @@ end
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+to-report Payoffs-Mini-Nash-Demand [A-Move B-Move]
+  report item (A-Move * 2 + B-Move) (list
+    (list mnd-Low mnd-Low) ; Low-Low
+    (list mnd-Low MND-High) ; ; Low-High
+    (list MND-High mnd-Low) ; High-Low
+    (list 0 0) ; High-High
+    )
+end
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+to-report MND-Low
+  report mnd-high * (100 - HLDiff-As-Perc-Of-H) * 0.01
+end
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 to-report Payoffs-Prisoners-Dilemma [A-Move B-Move]
   report item (A-Move * 2 + B-Move) (list
     (list reward reward) ; Cooperate-Cooperate
@@ -166,13 +185,13 @@ end
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-to-report Payoffs-Battle-Of-The-Sexes [A-Move B-Move]
+to-report Payoffs-Battle-Of-The-Sexes [A-Move B-Move A-group B-group]
   report item (A-Move * 2 + B-Move) (list
-    (list your-preference my-preference) ; We both went with B's ideal.
+    (list (ifelse-value (a-group = 1) [my-preference] [your-preference]) (ifelse-value (b-group = 1) [my-preference] [your-preference])) ; We both went with A's ideal.
     (list 0 0) ; ; We missed each other.
     (list 0 0) ; ; We missed each other.
-    (list my-preference your-preference) ; We both went with A's ideal.
-    )
+    (list (ifelse-value (a-group = 2) [my-preference] [your-preference]) (ifelse-value (b-group = 2) [my-preference] [your-preference])) ; We both went with B's ideal.
+  )
 end
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -352,7 +371,7 @@ to draw-axes
       set size 0
       set color black
       set label-color black
-      set label "V/C"
+      set label "MSNE" ;"V/C"
       setxy 0 (msne * y-max)
       set pen-size 2
       pen-down
@@ -364,13 +383,13 @@ to draw-axes
       set size 0
       set color black
       set label-color black
-      set label "V / C"
+      set label "MSNE" ;"V / C"
       setxy (msne * x-max) 0
       set pen-size 2
       pen-down
       setxy (msne * x-max) -0.25
       pen-up
-      setxy (msne * x-max) -1
+      setxy (1 + msne * x-max) -1
     ]
   ]
 
@@ -465,7 +484,7 @@ to Setup-Stochastic-Sim
 
   setup
   setup-rng "Seed-Setup"
-  setup-initial-populations
+  setup-initial-populations [[xx yy] -> setup-population-abm xx yy]
 
   set sorted-populations sort populations
 
@@ -488,11 +507,20 @@ end
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-to setup-initial-populations
+to setup-initial-populations [setup-population-task]
+  if initial-populations = "21x21 Evenly Spaced" [
+    foreach (range 0 105 5) [x100 ->
+      foreach (range 0 105 5) [y100 ->
+        (run setup-population-task x100 y100)
+      ]
+    ]
+    stop
+  ]
+
   if initial-populations = "11x11 Evenly Spaced" [
     foreach (range 0 110 10) [x100 ->
       foreach (range 0 110 10) [y100 ->
-        setup-population x100 y100
+        (run setup-population-task x100 y100)
       ]
     ]
     stop
@@ -501,42 +529,42 @@ to setup-initial-populations
   if initial-populations = "6x6 Evenly Spaced" [
     foreach (range 0 120 20) [x100 ->
       foreach (range 0 120 20) [y100 ->
-        setup-population x100 y100
+        (run setup-population-task x100 y100)
       ]
     ]
     stop
   ]
 
   if initial-populations = "1 at Initial-X/Y" [
-    setup-population initial-x initial-y
+    (run setup-population-task initial-x initial-y)
     stop
   ]
   if initial-populations = "10 at Initial-X/Y" [
-    repeat 10 [setup-population initial-x initial-y]
+    repeat 10 [(run setup-population-task initial-x initial-y)]
     stop
   ]
   if initial-populations = "100 at Initial-X/Y" [
-    repeat 100 [setup-population initial-x initial-y]
+    repeat 100 [(run setup-population-task initial-x initial-y)]
     stop
   ]
 
   if initial-populations = "1 at MSNE" [
-    setup-population (100 * msne) (100 * msne)
+    (run setup-population-task (100 * msne) (100 * msne))
     stop
   ]
   if initial-populations = "10 at MSNE" [
-    repeat 10 [setup-population (100 * msne) (100 * msne)]
+    repeat 10 [(run setup-population-task (100 * msne) (100 * msne))]
     stop
   ]
   if initial-populations = "100 at MSNE" [
-    repeat 100 [setup-population (100 * msne) (100 * msne)]
+    repeat 100 [(run setup-population-task (100 * msne) (100 * msne))]
     stop
   ]
 end
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-to setup-population [x100 y100]
+to setup-population-abm [x100 y100]
   create-populations 1 [
     set hidden? hide-populations?
     set shape "default"
@@ -819,7 +847,9 @@ to-report strategy-reporter
   if playing-strategy = "Play-MSNE" [report [a -> bl-playing msne a]]
   if playing-strategy = "Expect-MSNE" [report [a -> bl-expecting msne a]]
   if playing-strategy = "Play-Initial-X-Y" [report [a -> bl-playing (ifelse-value (pl-group = 1) [initial-x / 100] [initial-y / 100]) a]]
-  if playing-strategy = "Expect-Initial-X-Y" [report [a -> bl-expecting (ifelse-value (pl-group = 1) [initial-x / 100] [initial-y / 100]) a]]
+  if playing-strategy = "Expect-Initial-X-Y" [report [a -> bl-expecting (ifelse-value (pl-group = 1) [initial-y / 100] [initial-x / 100]) a]]
+  if playing-strategy = "Play-Neutrally-Initial-X-Y" [report [a -> bl-neut-playing (ifelse-value (pl-group = 1) [initial-x / 100] [initial-y / 100]) a]]
+  if playing-strategy = "Expect-Neutrally-Initial-X-Y" [report [a -> bl-neut-expecting (ifelse-value (pl-group = 1) [initial-y / 100] [initial-x / 100]) a]]
   if playing-strategy = "Play-Random" [report [a -> bl-playing 0.5 a]]
   if playing-strategy = "Play-H-D" [report [a -> bl-playing (ifelse-value (pl-group = 1) [1] [0]) a]]
   if playing-strategy = "Play-D-H" [report [a -> bl-playing (ifelse-value (pl-group = 1) [0] [1]) a]]
@@ -842,12 +872,27 @@ end
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 to-report best-response-to [given-expectation]
-  report ifelse-value (given-expectation * 100.0 < 1.0 * value-as-perc-of-cost) [1] [
-    ifelse-value (given-expectation * 100.0 = 1.0 * value-as-perc-of-cost) [
-      random 2
-    ]
-    [0]
-  ]
+  ; Recall:
+  ; MSNE = ( (first payoffs 0 0) - (first payoffs 1 0) ) / ( (first payoffs 1 1) - (first payoffs 1 0) - (first payoffs 0 1) + (first payoffs 0 0) )
+  ; NB: MSNE and payoffs could be non-integer, and given-expectation is non-integer.
+  ; i.e. Potential problem from comparing results of floating point arithmetic?
+  if given-expectation * ((first payoffs 1 1) - (first payoffs 0 1)) > ((1.0 - given-expectation) * ((first payoffs 0 0) - (first payoffs 1 0))) [report 1]
+  if given-expectation * ((first payoffs 1 1) - (first payoffs 0 1)) < ((1.0 - given-expectation) * ((first payoffs 0 0) - (first payoffs 1 0))) [report 0]
+
+  if (given-expectation < msne) [report 1]
+  if (given-expectation > msne) [report 0]
+  report random 2
+end
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+to-report neutral-best-response-to [given-expectation]
+  if given-expectation * ((first payoffs 1 1) - (first payoffs 0 1)) > ((1.0 - given-expectation) * ((first payoffs 0 0) - (first payoffs 1 0))) [report 1]
+  if given-expectation * ((first payoffs 1 1) - (first payoffs 0 1)) < ((1.0 - given-expectation) * ((first payoffs 0 0) - (first payoffs 1 0))) [report 0]
+
+  if (given-expectation < msne) [report 1]
+  if (given-expectation > msne) [report 0]
+  report ifelse-value (msne > random-float 1.0) [1] [0]
 end
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -860,10 +905,28 @@ end
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+to-report bl-neut-playing [given-prob given-alter]
+  ; Neutral in the sense that equal expected payoffs result in playing MSNE, not 50:50.
+  if pl-group = [pl-group] of given-alter [report playing-mixed-strategy msne]
+  if pl-other-interactions = 0 [report playing-mixed-strategy given-prob]
+  report playing-memory-neutrally
+end
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 to-report bl-expecting [given-prob given-alter]
   if pl-group = [pl-group] of given-alter [report playing-mixed-strategy msne]
   if pl-other-interactions = 0 [report best-response-to given-prob]
   report playing-memory
+end
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+to-report bl-neut-expecting [given-prob given-alter]
+  ; Neutral in the sense that equal expected payoffs result in playing MSNE, not 50:50.
+  if pl-group = [pl-group] of given-alter [report playing-mixed-strategy msne]
+  if pl-other-interactions = 0 [report neutral-best-response-to given-prob]
+  report playing-memory-neutrally
 end
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -894,16 +957,6 @@ end
 
 to-report playing-memory
   if pl-other-interactions = 0 [report playing-mixed-strategy msne]
-  ;if empty? pl-memory [report playing-msne]
-  ;let prob (length filter [h -> 1 = first h] pl-memory) / length pl-memory
-;  let prob pl-belief / pl-other-interactions
-;  let a (prob * first payoffs 0 1) + ((1 - prob) * first payoffs 0 0)
-;  let b (prob * first payoffs 1 1) + ((1 - prob) * first payoffs 1 0)
-  ; Keeping as many integers as possible.
-
-;  ; Hawk-Dove specific
-;  let a pl-belief * 100
-;  let b pl-other-interactions * value-as-perc-of-cost
 
   ; Would work for any payoffs table
   let a (pl-belief * first payoffs 0 1) + ((pl-other-interactions - pl-belief) * first payoffs 0 0)
@@ -912,6 +965,20 @@ to-report playing-memory
   if a > b [report 0]
   if b > a [report 1]
   report random 2 ; Not neutral! Should have played MSNE instead!
+end
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+to-report playing-memory-neutrally
+  if pl-other-interactions = 0 [report playing-mixed-strategy msne]
+
+  ; Would work for any payoffs table
+  let a (pl-belief * first payoffs 0 1) + ((pl-other-interactions - pl-belief) * first payoffs 0 0)
+  let b (pl-belief * first payoffs 1 1) + ((pl-other-interactions - pl-belief) * first payoffs 1 0)
+
+  if a > b [report 0]
+  if b > a [report 1]
+  report playing-mixed-strategy msne ; Neutral. Not 50:50 coin flipping.
 end
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -1232,13 +1299,13 @@ to print-dominance-errors
   ; To be run when all populations have converged.
   print ""
   print "Dominance Metrics Errors:"
-  print "ticks \tPop\tPRed\tV/C\tExpectnt\tHawkish\tDominant\tG1Dom\tG2Dom\tNoneDom\tStrategy"
+  print "ticks \tPop\tPRed\tMSNE\tExpectnt\tHawkish\tDominant\tG1Dom\tG2Dom\tNoneDom\tStrategy"
   let num-entries max [length po-dom-groups] of populations
   foreach n-values num-entries [i -> i] [i ->
     print (word ((i + 1) * 10) "\t"
       (count populations) "\t"
       (perc-group2) "\t"
-      (value-as-perc-of-cost / 100) "\t"
+      (msne) "\t"
       ((count populations) - count populations with [po-dominant-group = item (num-entries - i - 1) po-exp-groups]) "\t"
       ((count populations) - count populations with [po-dominant-group = item (num-entries - i - 1) po-haw-groups]) "\t"
       ((count populations) - count populations with [po-dominant-group = item (num-entries - i - 1) po-dom-groups]) "\t"
@@ -1255,13 +1322,13 @@ end
 to file-print-dominance-errors
   ; To be run when all populations have converged.
   file-open (word "Dom_Errors_BS" behaviorspace-run-number ".csv")
-  file-print (csv:to-row (list "ticks" "Pop" "PRed" "VOverC" "Expectant" "Hawkish" "Dominant" "G1Dom" "G2Dom" "NoneDom" "Strategy") ",")
+  file-print (csv:to-row (list "ticks" "Pop" "PRed" "MSNE" "Expectant" "Hawkish" "Dominant" "G1Dom" "G2Dom" "NoneDom" "Strategy") ",")
   let num-entries max [length po-dom-groups] of populations
   foreach n-values num-entries [i -> i] [i ->
     file-print (csv:to-row (list ((i + 1) * 10)
       (count populations)
       (perc-group2)
-      (value-as-perc-of-cost / 100)
+      (msne)
       ((count populations) - count populations with [po-dominant-group = item (num-entries - i - 1) po-exp-groups])
       ((count populations) - count populations with [po-dominant-group = item (num-entries - i - 1) po-haw-groups])
       ((count populations) - count populations with [po-dominant-group = item (num-entries - i - 1) po-dom-groups])
@@ -1305,16 +1372,17 @@ end
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 to-report Belief-And-V-Over-C-Test? [given-group above-not-below?]
+  ; NB: MSNE could be non-integer.
   if above-not-below? [
     foreach given-group [pl ->
-      if [(100 * pl-belief) <= (pl-other-interactions * value-as-perc-of-cost)] of pl [
+      if [(pl-belief) <= (pl-other-interactions * msne)] of pl [
         report false
       ]
     ]
     report true
   ]
   foreach given-group [pl ->
-    if [(100 * pl-belief) >= (pl-other-interactions * value-as-perc-of-cost)] of pl [
+    if [(pl-belief) >= (pl-other-interactions * msne)] of pl [
       report false
     ]
   ]
@@ -1374,23 +1442,13 @@ to Replicator-Dynamics-By-Equation
 
   setup
 
-  foreach (range 10 100 10) [x100 ->
-    foreach (range 10 100 10) [y100 ->
-      create-populations 1 [
-        set shape "default"
-        ;set color yellow
-        setxy (x-max * x100 / 100) (y-max * y100 / 100)
-        set x x100 / 100
-        set y y100 / 100
-        let x-dot rd-x-dot
-        let y-dot rd-y-dot
-;        facexy (xcor + x-max * x-dot) (ycor + y-max * y-dot)
-        facexy (x-max * next-x) (y-max * next-y)
-;        pen-down
-        if Population-Pen-Down? [pen-down]
-      ]
-    ]
-  ]
+;  foreach (range 10 100 10) [x100 ->
+;    foreach (range 10 100 10) [y100 ->
+;      setup-population-eqn x100 y100
+;    ]
+;  ]
+
+  setup-initial-populations [[xx yy] -> setup-population-eqn xx yy]
 
   set sorted-populations sort populations
 
@@ -1398,6 +1456,21 @@ to Replicator-Dynamics-By-Equation
 end
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+to setup-population-eqn [x100 y100]
+  create-populations 1 [
+    set shape "default"
+    ;set color yellow
+    setxy (x-max * x100 / 100) (y-max * y100 / 100)
+    set x x100 / 100
+    set y y100 / 100
+    let x-dot rd-x-dot
+    let y-dot rd-y-dot
+    ;        facexy (xcor + x-max * x-dot) (ycor + y-max * y-dot)
+    facexy (x-max * next-x) (y-max * next-y)
+    if Population-Pen-Down? [pen-down]
+  ]
+end
 
 to-report next-x
   let m speed-1 / 100
@@ -1548,7 +1621,7 @@ to-report model-amadae
       ["Population-Size" 200]
       ["Perc-Group2" 80]
       ["Opponents-Include-Own-Group?" true]
-      ["Playing-Strategy" "Amadae"]
+      ["Playing-Strategy" "Play-MSNE"]
       ["Initial-Populations" "11x11 Evenly Spaced"]
 ;      ["Initial-X" 10]
 ;      ["Initial-Y" 10]
@@ -1896,7 +1969,7 @@ Perc-Group2
 Perc-Group2
 0
 100
-80.0
+90.0
 5
 1
 %
@@ -1904,9 +1977,9 @@ HORIZONTAL
 
 INPUTBOX
 10
-700
+655
 70
-760
+715
 Value
 10.0
 1
@@ -1915,9 +1988,9 @@ Number
 
 MONITOR
 95
-700
+655
 230
-745
+700
 D-D: [V/2 V/2]
 made-neat Payoffs-Hawk-Dove 0 0
 17
@@ -1926,9 +1999,9 @@ made-neat Payoffs-Hawk-Dove 0 0
 
 MONITOR
 235
-700
+655
 370
-745
+700
 D-H: [0 V]
 made-neat Payoffs-Hawk-Dove 0 1
 17
@@ -1937,9 +2010,9 @@ made-neat Payoffs-Hawk-Dove 0 1
 
 MONITOR
 95
-750
+705
 230
-795
+750
 H-D: [V 0]
 made-neat Payoffs-Hawk-Dove 1 0
 17
@@ -1948,9 +2021,9 @@ made-neat Payoffs-Hawk-Dove 1 0
 
 MONITOR
 235
-750
+705
 370
-795
+750
 H-H: [(V-C)/2 (V-C)/2]
 made-neat Payoffs-Hawk-Dove 1 1
 17
@@ -1987,7 +2060,7 @@ Value-As-Perc-Of-Cost
 Value-As-Perc-Of-Cost
 0
 100
-80.0
+90.0
 5
 1
 %
@@ -2061,7 +2134,7 @@ CHOOSER
 205
 Game
 Game
-"Hawk-Dove" "Prisoner's Dilemma" "Mutualism" "Donation" "Hawk-Dove Optimal"
+"Hawk-Dove" "Prisoner's Dilemma" "Mutualism" "Mini Nash Demand" "Donation" "Hawk-Dove Optimal"
 0
 
 SLIDER
@@ -2071,9 +2144,9 @@ SLIDER
 678
 k
 k
-0
-5
-1.5
+-2
+2
+1.25
 .25
 1
 NIL
@@ -2082,7 +2155,7 @@ HORIZONTAL
 MONITOR
 455
 685
-512
+530
 730
 G-G
 made-neat Payoffs-mutualism 0 0
@@ -2091,9 +2164,9 @@ made-neat Payoffs-mutualism 0 0
 11
 
 MONITOR
-515
+535
 685
-572
+610
 730
 G-S
 made-neat Payoffs-mutualism 0 1
@@ -2104,7 +2177,7 @@ made-neat Payoffs-mutualism 0 1
 MONITOR
 455
 735
-512
+530
 780
 S-G
 made-neat Payoffs-mutualism 1 0
@@ -2113,9 +2186,9 @@ made-neat Payoffs-mutualism 1 0
 11
 
 MONITOR
-515
+535
 735
-572
+610
 780
 S-S
 made-neat Payoffs-mutualism 1 1
@@ -2291,14 +2364,14 @@ SWITCH
 503
 Population-Pen-Down?
 Population-Pen-Down?
-1
+0
 1
 -1000
 
 SLIDER
-1135
+1165
 360
-1307
+1337
 393
 Playing-Noise
 Playing-Noise
@@ -2485,10 +2558,10 @@ TEXTBOX
 1
 
 TEXTBOX
-290
-655
-400
-690
+95
+750
+205
+785
 1 = H = Hawk\n0 = D = Dove
 13
 0.0
@@ -2592,18 +2665,18 @@ Number
 CHOOSER
 955
 360
-1122
+1152
 405
 Playing-Strategy
 Playing-Strategy
-"Play-MSNE" "Expect-MSNE" "Play-Random" "Expect-D-D" "Expect-H-H" "Expect-H-0.5" "Play-H-D" "Play-D-H" "Play-Initial-X-Y" "Expect-Initial-X-Y" "Last Action" "MSNE" "Memory" "Stochastic Memory" "MSNE / Stoch Memory"
+"Play-Initial-X-Y" "Expect-Initial-X-Y" "Play-MSNE" "Expect-MSNE" "Play-Random" "Expect-D-D" "Expect-H-H" "Expect-H-0.5" "Play-H-D" "Play-D-H" "Play-Neutrally-Initial-X-Y" "Expect-Neutrally-Initial-X-Y" "Last Action" "MSNE" "Memory" "Stochastic Memory" "MSNE / Stoch Memory"
 0
 
 MONITOR
 10
-650
+510
 197
-695
+555
 Mixed-Strategy Nash Equilibrium
 MSNE
 5
@@ -2612,9 +2685,9 @@ MSNE
 
 MONITOR
 200
-650
+510
 282
-695
+555
 NIL
 MSNE-Payoff
 3
@@ -2665,10 +2738,10 @@ Use Equations:
 1
 
 TEXTBOX
-960
-95
-1135
-113
+955
+190
+1130
+208
 Use Agent-Based Simuation:
 14
 0.0
@@ -2814,9 +2887,9 @@ num-pops-with-groups-equal
 11
 
 TEXTBOX
-280
+305
 410
-555
+580
 591
 Key:\nAxes range from 0 (all Dove) to 1 (all Hawk).\nMean-Belief:\nx represents Group 2's beliefs about Group 1.\ny represents Group 1's beliefs about Group 2.\nMean-Action:\nx represents Group 1's most recent action.\ny represents Group 2's most recent action.\nUnhidden Players:\nx represents a Group 1 player's action history, and a Group 2 player's beliefs about Group 1.\ny represents a Group 2 player's action history, and a Group 1 player's beliefs about Group 2.\n
 11
@@ -2824,9 +2897,9 @@ Key:\nAxes range from 0 (all Dove) to 1 (all Hawk).\nMean-Belief:\nx represents 
 1
 
 CHOOSER
-955
+1140
 170
-1130
+1315
 215
 Memory-Initialization
 Memory-Initialization
@@ -2875,7 +2948,7 @@ My-Preference
 My-Preference
 0
 100
-40.0
+100.0
 5
 1
 NIL
@@ -2890,7 +2963,7 @@ Your-Preference
 Your-Preference
 0
 100
-20.0
+10.0
 5
 1
 NIL
@@ -2908,63 +2981,63 @@ Battle of the Sexes Payoffs:
 
 MONITOR
 880
-800
+830
 945
-845
+875
 B's Pref
-made-neat Payoffs-Battle-Of-The-Sexes 0 0
+made-neat Payoffs-Battle-Of-The-Sexes 0 0 1 2
 17
 1
 11
 
 MONITOR
 950
-800
+830
 1015
-845
+875
 Missed
-made-neat Payoffs-Battle-Of-The-Sexes 0 1
+made-neat Payoffs-Battle-Of-The-Sexes 0 1 1 2
 17
 1
 11
 
 MONITOR
 880
-850
+880
 945
-895
+925
 Missed
-made-neat Payoffs-Battle-Of-The-Sexes 1 0
+made-neat Payoffs-Battle-Of-The-Sexes 1 0 1 2
 17
 1
 11
 
 MONITOR
 950
-850
+880
 1015
-895
+925
 A's Pref
-made-neat Payoffs-Battle-Of-The-Sexes 1 1
+made-neat Payoffs-Battle-Of-The-Sexes 1 1 1 2
 17
 1
 11
 
 TEXTBOX
-685
-870
+680
 885
-915
+845
+930
 0 = I opt for B's ideal.\n1 = I opt for A's ideal.
 13
 0.0
 1
 
 TEXTBOX
-930
-780
-990
-798
+920
+815
+980
+833
 B's options:
 11
 0.0
@@ -2972,9 +3045,9 @@ B's options:
 
 TEXTBOX
 860
-835
+865
 875
-853
+883
 A's
 11
 0.0
@@ -3021,11 +3094,11 @@ Estimate Domination:
 1
 
 TEXTBOX
-875
-760
-1025
-778
-(Not currently implemented.)
+880
+765
+1030
+806
+(Not currently implemented.\nPayoffs function needs players' groups as input.)
 11
 0.0
 1
@@ -3094,20 +3167,20 @@ Average over Populations of Average over Group Members:
 1
 
 CHOOSER
-955
-120
-1130
-165
+915
+105
+1090
+150
 Initial-Populations
 Initial-Populations
-"11x11 Evenly Spaced" "6x6 Evenly Spaced" "1 at Initial-X/Y" "10 at Initial-X/Y" "100 at Initial-X/Y" "1 at MSNE" "10 at MSNE" "100 at MSNE"
-4
+"21x21 Evenly Spaced" "11x11 Evenly Spaced" "6x6 Evenly Spaced" "1 at Initial-X/Y" "10 at Initial-X/Y" "100 at Initial-X/Y" "1 at MSNE" "10 at MSNE" "100 at MSNE"
+3
 
 SLIDER
-1135
-120
-1307
-153
+1095
+95
+1267
+128
 Initial-X
 Initial-X
 0
@@ -3119,10 +3192,10 @@ Initial-X
 HORIZONTAL
 
 SLIDER
-1135
-155
-1307
-188
+1095
+130
+1267
+163
 Initial-Y
 Initial-Y
 0
@@ -3140,7 +3213,7 @@ SWITCH
 448
 Hide-Populations?
 Hide-Populations?
-0
+1
 1
 -1000
 
@@ -3486,7 +3559,7 @@ TEXTBOX
 300
 1685
 346
-Dominance:\n(All Expect < V/C vs All Expect > V/C)
+Dominance:\n(All Expect < MSNE vs All Expect > MSNE)
 13
 0.0
 1
@@ -3523,6 +3596,118 @@ NIL
 NIL
 NIL
 NIL
+1
+
+MONITOR
+455
+825
+540
+870
+(2 - k) / (3 - k)
+1.0 - 1.0 / (3.0 - k)
+5
+1
+11
+
+TEXTBOX
+455
+920
+655
+950
+Mini Nash Demand Payoffs:
+16
+0.0
+1
+
+INPUTBOX
+455
+950
+525
+1010
+MND-High
+6.0
+1
+0
+Number
+
+SLIDER
+530
+950
+707
+983
+HLDiff-As-Perc-Of-H
+HLDiff-As-Perc-Of-H
+0
+100
+90.0
+5
+1
+%
+HORIZONTAL
+
+MONITOR
+710
+955
+772
+1000
+MND-Low
+MND-Low
+3
+1
+11
+
+MONITOR
+455
+1015
+512
+1060
+L-L
+made-neat Payoffs-mini-nash-demand 0 0
+17
+1
+11
+
+MONITOR
+515
+1015
+572
+1060
+L-H
+made-neat Payoffs-mini-nash-demand 0 1
+17
+1
+11
+
+MONITOR
+455
+1065
+512
+1110
+H-L
+made-neat Payoffs-mini-nash-demand 1 0
+17
+1
+11
+
+MONITOR
+515
+1065
+572
+1110
+H-H
+made-neat Payoffs-mini-nash-demand 1 1
+17
+1
+11
+
+TEXTBOX
+590
+1015
+740
+1046
+1 = H = High demand\n0 = L = Low demand\n
+13
+0.0
 1
 
 @#$#@#$#@
@@ -5103,6 +5288,1277 @@ NetLogo 6.1.1
     </enumeratedValueSet>
     <enumeratedValueSet variable="Reposition-Populations">
       <value value="&quot;By Mean Out Action&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Population-Pen-Down?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Recolor-Populations?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Calculate-Dominance?">
+      <value value="true"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Print-Out-Match-Results?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Seed-Setup">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Seed-Go">
+      <value value="0"/>
+    </enumeratedValueSet>
+  </experiment>
+  <experiment name="experiment-Amadae-EmptyMemory-Play-XY" repetitions="1" sequentialRunOrder="false" runMetricsEveryStep="false">
+    <setup>setup-stochastic-sim</setup>
+    <go>go-sim</go>
+    <metric>timer</metric>
+    <metric>prev-seed-setup</metric>
+    <metric>prev-seed-go</metric>
+    <metric>count populations</metric>
+    <metric>num-pops-g1-dominant</metric>
+    <metric>num-pops-g2-dominant</metric>
+    <metric>num-pops-none-dominant</metric>
+    <metric>num-pops-g1-hawkish</metric>
+    <metric>num-pops-g2-hawkish</metric>
+    <metric>num-pops-none-hawkish</metric>
+    <metric>num-pops-with-group1-dom</metric>
+    <metric>num-pops-with-group2-dom</metric>
+    <metric>num-pops-with-groups-equal</metric>
+    <metric>Cost</metric>
+    <metric>msne</metric>
+    <metric>msne-payoff</metric>
+    <metric>group1-payoff</metric>
+    <metric>group2-payoff</metric>
+    <enumeratedValueSet variable="Game">
+      <value value="&quot;Hawk-Dove&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Rounds">
+      <value value="2000"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Population-Size">
+      <value value="200"/>
+    </enumeratedValueSet>
+    <steppedValueSet variable="Perc-Group2" first="10" step="10" last="90"/>
+    <enumeratedValueSet variable="Opponents-Include-Own-Group?">
+      <value value="true"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Playing-Strategy">
+      <value value="&quot;Play-Initial-X-Y&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Initial-Populations">
+      <value value="&quot;100 at Initial-X/Y&quot;"/>
+    </enumeratedValueSet>
+    <steppedValueSet variable="Initial-X" first="0" step="10" last="100"/>
+    <steppedValueSet variable="Initial-Y" first="0" step="10" last="100"/>
+    <enumeratedValueSet variable="Memory-Initialization">
+      <value value="&quot;Empty&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Memory-Initial-Weight-1">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Memory-Initial-Weight-2">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Memory-Length-1">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Memory-Length-2">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Unlimited-Memory?">
+      <value value="true"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Playing-Noise">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Replicate?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Replication-Noise">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Speed-1">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Speed-2">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Delta">
+      <value value="0.1"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Value">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <steppedValueSet variable="Value-As-Perc-Of-Cost" first="10" step="10" last="90"/>
+    <enumeratedValueSet variable="Punishment">
+      <value value="1"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Reward">
+      <value value="3"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Sucker">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Temptation">
+      <value value="5"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="k">
+      <value value="1.5"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="My-Preference">
+      <value value="40"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Your-Preference">
+      <value value="20"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Draw-X-And-Y-Axes?">
+      <value value="true"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Reposition-Populations">
+      <value value="&quot;By Mean Belief&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Population-Pen-Down?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Recolor-Populations?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Calculate-Dominance?">
+      <value value="true"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Print-Out-Match-Results?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Seed-Setup">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Seed-Go">
+      <value value="0"/>
+    </enumeratedValueSet>
+  </experiment>
+  <experiment name="experiment-Amadae-EmptyMemory-Expect-XY" repetitions="1" sequentialRunOrder="false" runMetricsEveryStep="false">
+    <setup>setup-stochastic-sim</setup>
+    <go>go-sim</go>
+    <metric>timer</metric>
+    <metric>prev-seed-setup</metric>
+    <metric>prev-seed-go</metric>
+    <metric>count populations</metric>
+    <metric>num-pops-g1-dominant</metric>
+    <metric>num-pops-g2-dominant</metric>
+    <metric>num-pops-none-dominant</metric>
+    <metric>num-pops-g1-hawkish</metric>
+    <metric>num-pops-g2-hawkish</metric>
+    <metric>num-pops-none-hawkish</metric>
+    <metric>num-pops-with-group1-dom</metric>
+    <metric>num-pops-with-group2-dom</metric>
+    <metric>num-pops-with-groups-equal</metric>
+    <metric>Cost</metric>
+    <metric>msne</metric>
+    <metric>msne-payoff</metric>
+    <metric>group1-payoff</metric>
+    <metric>group2-payoff</metric>
+    <enumeratedValueSet variable="Game">
+      <value value="&quot;Hawk-Dove&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Rounds">
+      <value value="2000"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Population-Size">
+      <value value="200"/>
+    </enumeratedValueSet>
+    <steppedValueSet variable="Perc-Group2" first="10" step="10" last="90"/>
+    <enumeratedValueSet variable="Opponents-Include-Own-Group?">
+      <value value="true"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Playing-Strategy">
+      <value value="&quot;Expect-Initial-X-Y&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Initial-Populations">
+      <value value="&quot;100 at Initial-X/Y&quot;"/>
+    </enumeratedValueSet>
+    <steppedValueSet variable="Initial-X" first="0" step="10" last="100"/>
+    <steppedValueSet variable="Initial-Y" first="0" step="10" last="100"/>
+    <enumeratedValueSet variable="Memory-Initialization">
+      <value value="&quot;Empty&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Memory-Initial-Weight-1">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Memory-Initial-Weight-2">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Memory-Length-1">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Memory-Length-2">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Unlimited-Memory?">
+      <value value="true"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Playing-Noise">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Replicate?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Replication-Noise">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Speed-1">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Speed-2">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Delta">
+      <value value="0.1"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Value">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <steppedValueSet variable="Value-As-Perc-Of-Cost" first="10" step="10" last="90"/>
+    <enumeratedValueSet variable="Punishment">
+      <value value="1"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Reward">
+      <value value="3"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Sucker">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Temptation">
+      <value value="5"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="k">
+      <value value="1.5"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="My-Preference">
+      <value value="40"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Your-Preference">
+      <value value="20"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Draw-X-And-Y-Axes?">
+      <value value="true"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Reposition-Populations">
+      <value value="&quot;By Mean Belief&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Population-Pen-Down?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Recolor-Populations?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Calculate-Dominance?">
+      <value value="true"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Print-Out-Match-Results?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Seed-Setup">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Seed-Go">
+      <value value="0"/>
+    </enumeratedValueSet>
+  </experiment>
+  <experiment name="experiment-Amadae-EmptyMemory-Play-Neut-XY" repetitions="1" sequentialRunOrder="false" runMetricsEveryStep="false">
+    <setup>setup-stochastic-sim</setup>
+    <go>go-sim</go>
+    <metric>timer</metric>
+    <metric>prev-seed-setup</metric>
+    <metric>prev-seed-go</metric>
+    <metric>count populations</metric>
+    <metric>num-pops-g1-dominant</metric>
+    <metric>num-pops-g2-dominant</metric>
+    <metric>num-pops-none-dominant</metric>
+    <metric>num-pops-g1-hawkish</metric>
+    <metric>num-pops-g2-hawkish</metric>
+    <metric>num-pops-none-hawkish</metric>
+    <metric>num-pops-with-group1-dom</metric>
+    <metric>num-pops-with-group2-dom</metric>
+    <metric>num-pops-with-groups-equal</metric>
+    <metric>Cost</metric>
+    <metric>msne</metric>
+    <metric>msne-payoff</metric>
+    <metric>group1-payoff</metric>
+    <metric>group2-payoff</metric>
+    <enumeratedValueSet variable="Game">
+      <value value="&quot;Hawk-Dove&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Rounds">
+      <value value="2000"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Population-Size">
+      <value value="200"/>
+    </enumeratedValueSet>
+    <steppedValueSet variable="Perc-Group2" first="10" step="10" last="90"/>
+    <enumeratedValueSet variable="Opponents-Include-Own-Group?">
+      <value value="true"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Playing-Strategy">
+      <value value="&quot;Play-Neutrally-Initial-X-Y&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Initial-Populations">
+      <value value="&quot;100 at Initial-X/Y&quot;"/>
+    </enumeratedValueSet>
+    <steppedValueSet variable="Initial-X" first="0" step="10" last="100"/>
+    <steppedValueSet variable="Initial-Y" first="0" step="10" last="100"/>
+    <enumeratedValueSet variable="Memory-Initialization">
+      <value value="&quot;Empty&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Memory-Initial-Weight-1">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Memory-Initial-Weight-2">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Memory-Length-1">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Memory-Length-2">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Unlimited-Memory?">
+      <value value="true"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Playing-Noise">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Replicate?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Replication-Noise">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Speed-1">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Speed-2">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Delta">
+      <value value="0.1"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Value">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <steppedValueSet variable="Value-As-Perc-Of-Cost" first="10" step="10" last="90"/>
+    <enumeratedValueSet variable="Punishment">
+      <value value="1"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Reward">
+      <value value="3"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Sucker">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Temptation">
+      <value value="5"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="k">
+      <value value="1.5"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="My-Preference">
+      <value value="40"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Your-Preference">
+      <value value="20"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Draw-X-And-Y-Axes?">
+      <value value="true"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Reposition-Populations">
+      <value value="&quot;By Mean Belief&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Population-Pen-Down?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Recolor-Populations?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Calculate-Dominance?">
+      <value value="true"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Print-Out-Match-Results?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Seed-Setup">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Seed-Go">
+      <value value="0"/>
+    </enumeratedValueSet>
+  </experiment>
+  <experiment name="experiment-Amadae-EmptyMemory-Expect-Neut-XY" repetitions="1" sequentialRunOrder="false" runMetricsEveryStep="false">
+    <setup>setup-stochastic-sim</setup>
+    <go>go-sim</go>
+    <metric>timer</metric>
+    <metric>prev-seed-setup</metric>
+    <metric>prev-seed-go</metric>
+    <metric>count populations</metric>
+    <metric>num-pops-g1-dominant</metric>
+    <metric>num-pops-g2-dominant</metric>
+    <metric>num-pops-none-dominant</metric>
+    <metric>num-pops-g1-hawkish</metric>
+    <metric>num-pops-g2-hawkish</metric>
+    <metric>num-pops-none-hawkish</metric>
+    <metric>num-pops-with-group1-dom</metric>
+    <metric>num-pops-with-group2-dom</metric>
+    <metric>num-pops-with-groups-equal</metric>
+    <metric>Cost</metric>
+    <metric>msne</metric>
+    <metric>msne-payoff</metric>
+    <metric>group1-payoff</metric>
+    <metric>group2-payoff</metric>
+    <enumeratedValueSet variable="Game">
+      <value value="&quot;Hawk-Dove&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Rounds">
+      <value value="2000"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Population-Size">
+      <value value="200"/>
+    </enumeratedValueSet>
+    <steppedValueSet variable="Perc-Group2" first="10" step="10" last="90"/>
+    <enumeratedValueSet variable="Opponents-Include-Own-Group?">
+      <value value="true"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Playing-Strategy">
+      <value value="&quot;Expect-Neutrally-Initial-X-Y&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Initial-Populations">
+      <value value="&quot;100 at Initial-X/Y&quot;"/>
+    </enumeratedValueSet>
+    <steppedValueSet variable="Initial-X" first="0" step="10" last="100"/>
+    <steppedValueSet variable="Initial-Y" first="0" step="10" last="100"/>
+    <enumeratedValueSet variable="Memory-Initialization">
+      <value value="&quot;Empty&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Memory-Initial-Weight-1">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Memory-Initial-Weight-2">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Memory-Length-1">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Memory-Length-2">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Unlimited-Memory?">
+      <value value="true"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Playing-Noise">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Replicate?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Replication-Noise">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Speed-1">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Speed-2">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Delta">
+      <value value="0.1"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Value">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <steppedValueSet variable="Value-As-Perc-Of-Cost" first="10" step="10" last="90"/>
+    <enumeratedValueSet variable="Punishment">
+      <value value="1"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Reward">
+      <value value="3"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Sucker">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Temptation">
+      <value value="5"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="k">
+      <value value="1.5"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="My-Preference">
+      <value value="40"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Your-Preference">
+      <value value="20"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Draw-X-And-Y-Axes?">
+      <value value="true"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Reposition-Populations">
+      <value value="&quot;By Mean Belief&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Population-Pen-Down?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Recolor-Populations?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Calculate-Dominance?">
+      <value value="true"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Print-Out-Match-Results?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Seed-Setup">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Seed-Go">
+      <value value="0"/>
+    </enumeratedValueSet>
+  </experiment>
+  <experiment name="experiment-Mutualism-EmptyMemory-Play-XY" repetitions="1" sequentialRunOrder="false" runMetricsEveryStep="false">
+    <setup>setup-stochastic-sim</setup>
+    <go>go-sim</go>
+    <metric>timer</metric>
+    <metric>prev-seed-setup</metric>
+    <metric>prev-seed-go</metric>
+    <metric>count populations</metric>
+    <metric>num-pops-g1-dominant</metric>
+    <metric>num-pops-g2-dominant</metric>
+    <metric>num-pops-none-dominant</metric>
+    <metric>num-pops-g1-hawkish</metric>
+    <metric>num-pops-g2-hawkish</metric>
+    <metric>num-pops-none-hawkish</metric>
+    <metric>num-pops-with-group1-dom</metric>
+    <metric>num-pops-with-group2-dom</metric>
+    <metric>num-pops-with-groups-equal</metric>
+    <metric>msne</metric>
+    <metric>msne-payoff</metric>
+    <metric>group1-payoff</metric>
+    <metric>group2-payoff</metric>
+    <enumeratedValueSet variable="Game">
+      <value value="&quot;Mutualism&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Rounds">
+      <value value="2000"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Population-Size">
+      <value value="200"/>
+    </enumeratedValueSet>
+    <steppedValueSet variable="Perc-Group2" first="10" step="10" last="90"/>
+    <enumeratedValueSet variable="Opponents-Include-Own-Group?">
+      <value value="true"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Playing-Strategy">
+      <value value="&quot;Play-Initial-X-Y&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Initial-Populations">
+      <value value="&quot;100 at Initial-X/Y&quot;"/>
+    </enumeratedValueSet>
+    <steppedValueSet variable="Initial-X" first="0" step="10" last="100"/>
+    <steppedValueSet variable="Initial-Y" first="0" step="10" last="100"/>
+    <enumeratedValueSet variable="Memory-Initialization">
+      <value value="&quot;Empty&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Memory-Initial-Weight-1">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Memory-Initial-Weight-2">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Memory-Length-1">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Memory-Length-2">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Unlimited-Memory?">
+      <value value="true"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Playing-Noise">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Replicate?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Replication-Noise">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Speed-1">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Speed-2">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Delta">
+      <value value="0.1"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Value">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Value-As-Perc-Of-Cost">
+      <value value="90"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Punishment">
+      <value value="1"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Reward">
+      <value value="3"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Sucker">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Temptation">
+      <value value="5"/>
+    </enumeratedValueSet>
+    <steppedValueSet variable="k" first="0" step="0.25" last="2"/>
+    <enumeratedValueSet variable="My-Preference">
+      <value value="40"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Your-Preference">
+      <value value="20"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Draw-X-And-Y-Axes?">
+      <value value="true"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Reposition-Populations">
+      <value value="&quot;By Mean Belief&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Population-Pen-Down?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Recolor-Populations?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Calculate-Dominance?">
+      <value value="true"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Print-Out-Match-Results?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Seed-Setup">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Seed-Go">
+      <value value="0"/>
+    </enumeratedValueSet>
+  </experiment>
+  <experiment name="experiment-Eqn-HD-XY" repetitions="1" sequentialRunOrder="false" runMetricsEveryStep="false">
+    <setup>Replicator-Dynamics-By-Equation</setup>
+    <go>go-eqn</go>
+    <metric>timer</metric>
+    <metric>prev-seed-setup</metric>
+    <metric>prev-seed-go</metric>
+    <metric>count populations</metric>
+    <metric>num-pops-g1-dominant</metric>
+    <metric>num-pops-g2-dominant</metric>
+    <metric>num-pops-none-dominant</metric>
+    <metric>num-pops-g1-hawkish</metric>
+    <metric>num-pops-g2-hawkish</metric>
+    <metric>num-pops-none-hawkish</metric>
+    <metric>num-pops-with-group1-dom</metric>
+    <metric>num-pops-with-group2-dom</metric>
+    <metric>num-pops-with-groups-equal</metric>
+    <metric>Cost</metric>
+    <metric>msne</metric>
+    <metric>msne-payoff</metric>
+    <metric>group1-payoff</metric>
+    <metric>group2-payoff</metric>
+    <metric>mean [x] of populations</metric>
+    <metric>mean [y] of populations</metric>
+    <metric>mean [xcor / x-max] of populations</metric>
+    <metric>mean [ycor / y-max] of populations</metric>
+    <enumeratedValueSet variable="Game">
+      <value value="&quot;Hawk-Dove&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Rounds">
+      <value value="4000"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Population-Size">
+      <value value="200"/>
+    </enumeratedValueSet>
+    <steppedValueSet variable="Perc-Group2" first="10" step="10" last="90"/>
+    <enumeratedValueSet variable="Opponents-Include-Own-Group?">
+      <value value="true"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Initial-Populations">
+      <value value="&quot;1 at Initial-X/Y&quot;"/>
+    </enumeratedValueSet>
+    <steppedValueSet variable="Initial-X" first="0" step="5" last="100"/>
+    <steppedValueSet variable="Initial-Y" first="0" step="5" last="100"/>
+    <enumeratedValueSet variable="Playing-Noise">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Replication-Noise">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Speed-1">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Speed-2">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Delta">
+      <value value="0.1"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Value">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <steppedValueSet variable="Value-As-Perc-Of-Cost" first="10" step="10" last="90"/>
+    <enumeratedValueSet variable="MND-High">
+      <value value="6"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="HLDiff-As-Perc-Of-H">
+      <value value="90"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Punishment">
+      <value value="1"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Reward">
+      <value value="3"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Sucker">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Temptation">
+      <value value="5"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="k">
+      <value value="1.5"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="My-Preference">
+      <value value="40"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Your-Preference">
+      <value value="20"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Draw-X-And-Y-Axes?">
+      <value value="true"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Reposition-Populations">
+      <value value="&quot;By Mean Out Action&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Population-Pen-Down?">
+      <value value="true"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Recolor-Populations?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Calculate-Dominance?">
+      <value value="true"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Print-Out-Match-Results?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Seed-Setup">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Seed-Go">
+      <value value="0"/>
+    </enumeratedValueSet>
+  </experiment>
+  <experiment name="experiment-Eqn-MND-XY" repetitions="1" sequentialRunOrder="false" runMetricsEveryStep="false">
+    <setup>Replicator-Dynamics-By-Equation</setup>
+    <go>go-eqn</go>
+    <metric>timer</metric>
+    <metric>prev-seed-setup</metric>
+    <metric>prev-seed-go</metric>
+    <metric>count populations</metric>
+    <metric>num-pops-g1-dominant</metric>
+    <metric>num-pops-g2-dominant</metric>
+    <metric>num-pops-none-dominant</metric>
+    <metric>num-pops-g1-hawkish</metric>
+    <metric>num-pops-g2-hawkish</metric>
+    <metric>num-pops-none-hawkish</metric>
+    <metric>num-pops-with-group1-dom</metric>
+    <metric>num-pops-with-group2-dom</metric>
+    <metric>num-pops-with-groups-equal</metric>
+    <metric>MND-Low</metric>
+    <metric>msne</metric>
+    <metric>msne-payoff</metric>
+    <metric>group1-payoff</metric>
+    <metric>group2-payoff</metric>
+    <metric>mean [x] of populations</metric>
+    <metric>mean [y] of populations</metric>
+    <metric>mean [xcor / x-max] of populations</metric>
+    <metric>mean [ycor / y-max] of populations</metric>
+    <enumeratedValueSet variable="Game">
+      <value value="&quot;Mini Nash Demand&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Rounds">
+      <value value="4000"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Population-Size">
+      <value value="200"/>
+    </enumeratedValueSet>
+    <steppedValueSet variable="Perc-Group2" first="10" step="10" last="90"/>
+    <enumeratedValueSet variable="Opponents-Include-Own-Group?">
+      <value value="true"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Initial-Populations">
+      <value value="&quot;1 at Initial-X/Y&quot;"/>
+    </enumeratedValueSet>
+    <steppedValueSet variable="Initial-X" first="0" step="5" last="100"/>
+    <steppedValueSet variable="Initial-Y" first="0" step="5" last="100"/>
+    <enumeratedValueSet variable="Playing-Noise">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Replication-Noise">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Speed-1">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Speed-2">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Delta">
+      <value value="0.1"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Value">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Value-As-Perc-Of-Cost">
+      <value value="90"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="MND-High">
+      <value value="6"/>
+    </enumeratedValueSet>
+    <steppedValueSet variable="HLDiff-As-Perc-Of-H" first="10" step="10" last="90"/>
+    <enumeratedValueSet variable="Punishment">
+      <value value="1"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Reward">
+      <value value="3"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Sucker">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Temptation">
+      <value value="5"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="k">
+      <value value="1.5"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="My-Preference">
+      <value value="40"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Your-Preference">
+      <value value="20"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Draw-X-And-Y-Axes?">
+      <value value="true"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Reposition-Populations">
+      <value value="&quot;By Mean Out Action&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Population-Pen-Down?">
+      <value value="true"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Recolor-Populations?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Calculate-Dominance?">
+      <value value="true"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Print-Out-Match-Results?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Seed-Setup">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Seed-Go">
+      <value value="0"/>
+    </enumeratedValueSet>
+  </experiment>
+  <experiment name="experiment-Eqn-Mut-XY" repetitions="1" sequentialRunOrder="false" runMetricsEveryStep="false">
+    <setup>Replicator-Dynamics-By-Equation</setup>
+    <go>go-eqn</go>
+    <metric>timer</metric>
+    <metric>prev-seed-setup</metric>
+    <metric>prev-seed-go</metric>
+    <metric>count populations</metric>
+    <metric>num-pops-g1-dominant</metric>
+    <metric>num-pops-g2-dominant</metric>
+    <metric>num-pops-none-dominant</metric>
+    <metric>num-pops-g1-hawkish</metric>
+    <metric>num-pops-g2-hawkish</metric>
+    <metric>num-pops-none-hawkish</metric>
+    <metric>num-pops-with-group1-dom</metric>
+    <metric>num-pops-with-group2-dom</metric>
+    <metric>num-pops-with-groups-equal</metric>
+    <metric>k</metric>
+    <metric>msne</metric>
+    <metric>msne-payoff</metric>
+    <metric>group1-payoff</metric>
+    <metric>group2-payoff</metric>
+    <metric>mean [x] of populations</metric>
+    <metric>mean [y] of populations</metric>
+    <metric>mean [xcor / x-max] of populations</metric>
+    <metric>mean [ycor / y-max] of populations</metric>
+    <enumeratedValueSet variable="Game">
+      <value value="&quot;Mutualism&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Rounds">
+      <value value="4000"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Population-Size">
+      <value value="200"/>
+    </enumeratedValueSet>
+    <steppedValueSet variable="Perc-Group2" first="10" step="10" last="90"/>
+    <enumeratedValueSet variable="Opponents-Include-Own-Group?">
+      <value value="true"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Initial-Populations">
+      <value value="&quot;1 at Initial-X/Y&quot;"/>
+    </enumeratedValueSet>
+    <steppedValueSet variable="Initial-X" first="0" step="5" last="100"/>
+    <steppedValueSet variable="Initial-Y" first="0" step="5" last="100"/>
+    <enumeratedValueSet variable="Playing-Noise">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Replication-Noise">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Speed-1">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Speed-2">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Delta">
+      <value value="0.1"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Value">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Value-As-Perc-Of-Cost">
+      <value value="90"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="MND-High">
+      <value value="6"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="HLDiff-As-Perc-Of-H">
+      <value value="90"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Punishment">
+      <value value="1"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Reward">
+      <value value="3"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Sucker">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Temptation">
+      <value value="5"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="k">
+      <value value="1.888888889"/>
+      <value value="1.75"/>
+      <value value="1.571428571"/>
+      <value value="1.333333333"/>
+      <value value="1"/>
+      <value value="0.5"/>
+      <value value="-0.333333333"/>
+      <value value="-2"/>
+      <value value="-7"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="My-Preference">
+      <value value="40"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Your-Preference">
+      <value value="20"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Draw-X-And-Y-Axes?">
+      <value value="true"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Reposition-Populations">
+      <value value="&quot;By Mean Out Action&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Population-Pen-Down?">
+      <value value="true"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Recolor-Populations?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Calculate-Dominance?">
+      <value value="true"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Print-Out-Match-Results?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Seed-Setup">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Seed-Go">
+      <value value="0"/>
+    </enumeratedValueSet>
+  </experiment>
+  <experiment name="experiment-MND-EmptyMemory-Play-XY" repetitions="1" sequentialRunOrder="false" runMetricsEveryStep="false">
+    <setup>setup-stochastic-sim</setup>
+    <go>go-sim</go>
+    <metric>timer</metric>
+    <metric>prev-seed-setup</metric>
+    <metric>prev-seed-go</metric>
+    <metric>count populations</metric>
+    <metric>num-pops-g1-dominant</metric>
+    <metric>num-pops-g2-dominant</metric>
+    <metric>num-pops-none-dominant</metric>
+    <metric>num-pops-g1-hawkish</metric>
+    <metric>num-pops-g2-hawkish</metric>
+    <metric>num-pops-none-hawkish</metric>
+    <metric>num-pops-with-group1-dom</metric>
+    <metric>num-pops-with-group2-dom</metric>
+    <metric>num-pops-with-groups-equal</metric>
+    <metric>Cost</metric>
+    <metric>MND-Low</metric>
+    <metric>msne</metric>
+    <metric>msne-payoff</metric>
+    <metric>group1-payoff</metric>
+    <metric>group2-payoff</metric>
+    <enumeratedValueSet variable="Game">
+      <value value="&quot;Mini Nash Demand&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Rounds">
+      <value value="2000"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Population-Size">
+      <value value="200"/>
+    </enumeratedValueSet>
+    <steppedValueSet variable="Perc-Group2" first="10" step="10" last="90"/>
+    <enumeratedValueSet variable="Opponents-Include-Own-Group?">
+      <value value="true"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Playing-Strategy">
+      <value value="&quot;Play-Initial-X-Y&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Initial-Populations">
+      <value value="&quot;100 at Initial-X/Y&quot;"/>
+    </enumeratedValueSet>
+    <steppedValueSet variable="Initial-X" first="0" step="10" last="100"/>
+    <steppedValueSet variable="Initial-Y" first="0" step="10" last="100"/>
+    <enumeratedValueSet variable="Memory-Initialization">
+      <value value="&quot;Empty&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Memory-Initial-Weight-1">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Memory-Initial-Weight-2">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Memory-Length-1">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Memory-Length-2">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Unlimited-Memory?">
+      <value value="true"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Playing-Noise">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Replicate?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Replication-Noise">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Speed-1">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Speed-2">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Delta">
+      <value value="0.1"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Value">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Value-As-Perc-Of-Cost">
+      <value value="90"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="MND-High">
+      <value value="6"/>
+    </enumeratedValueSet>
+    <steppedValueSet variable="HLDiff-As-Perc-Of-H" first="10" step="10" last="90"/>
+    <enumeratedValueSet variable="Punishment">
+      <value value="1"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Reward">
+      <value value="3"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Sucker">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Temptation">
+      <value value="5"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="k">
+      <value value="1.5"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="My-Preference">
+      <value value="40"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Your-Preference">
+      <value value="20"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Draw-X-And-Y-Axes?">
+      <value value="true"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Reposition-Populations">
+      <value value="&quot;By Mean Belief&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Population-Pen-Down?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Recolor-Populations?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Calculate-Dominance?">
+      <value value="true"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Print-Out-Match-Results?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Seed-Setup">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Seed-Go">
+      <value value="0"/>
+    </enumeratedValueSet>
+  </experiment>
+  <experiment name="experiment-Mut-EmptyMemory-Play-XY" repetitions="1" sequentialRunOrder="false" runMetricsEveryStep="false">
+    <setup>setup-stochastic-sim</setup>
+    <go>go-sim</go>
+    <metric>timer</metric>
+    <metric>prev-seed-setup</metric>
+    <metric>prev-seed-go</metric>
+    <metric>count populations</metric>
+    <metric>num-pops-g1-dominant</metric>
+    <metric>num-pops-g2-dominant</metric>
+    <metric>num-pops-none-dominant</metric>
+    <metric>num-pops-g1-hawkish</metric>
+    <metric>num-pops-g2-hawkish</metric>
+    <metric>num-pops-none-hawkish</metric>
+    <metric>num-pops-with-group1-dom</metric>
+    <metric>num-pops-with-group2-dom</metric>
+    <metric>num-pops-with-groups-equal</metric>
+    <metric>Cost</metric>
+    <metric>MND-Low</metric>
+    <metric>msne</metric>
+    <metric>msne-payoff</metric>
+    <metric>group1-payoff</metric>
+    <metric>group2-payoff</metric>
+    <enumeratedValueSet variable="Game">
+      <value value="&quot;Mutualism&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Rounds">
+      <value value="2000"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Population-Size">
+      <value value="200"/>
+    </enumeratedValueSet>
+    <steppedValueSet variable="Perc-Group2" first="10" step="10" last="90"/>
+    <enumeratedValueSet variable="Opponents-Include-Own-Group?">
+      <value value="true"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Playing-Strategy">
+      <value value="&quot;Play-Initial-X-Y&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Initial-Populations">
+      <value value="&quot;100 at Initial-X/Y&quot;"/>
+    </enumeratedValueSet>
+    <steppedValueSet variable="Initial-X" first="0" step="10" last="100"/>
+    <steppedValueSet variable="Initial-Y" first="0" step="10" last="100"/>
+    <enumeratedValueSet variable="Memory-Initialization">
+      <value value="&quot;Empty&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Memory-Initial-Weight-1">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Memory-Initial-Weight-2">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Memory-Length-1">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Memory-Length-2">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Unlimited-Memory?">
+      <value value="true"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Playing-Noise">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Replicate?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Replication-Noise">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Speed-1">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Speed-2">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Delta">
+      <value value="0.1"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Value">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Value-As-Perc-Of-Cost">
+      <value value="90"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="MND-High">
+      <value value="6"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="HLDiff-As-Perc-Of-H">
+      <value value="90"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Punishment">
+      <value value="1"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Reward">
+      <value value="3"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Sucker">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Temptation">
+      <value value="5"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="k">
+      <value value="1.888888889"/>
+      <value value="1.75"/>
+      <value value="1.571428571"/>
+      <value value="1.333333333"/>
+      <value value="1"/>
+      <value value="0.5"/>
+      <value value="-0.333333333"/>
+      <value value="-2"/>
+      <value value="-7"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="My-Preference">
+      <value value="40"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Your-Preference">
+      <value value="20"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Draw-X-And-Y-Axes?">
+      <value value="true"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Reposition-Populations">
+      <value value="&quot;By Mean Belief&quot;"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="Population-Pen-Down?">
       <value value="false"/>
