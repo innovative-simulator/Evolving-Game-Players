@@ -39,7 +39,7 @@ On opening the model in NetLogo, the Info tab will contain more information and 
 ## References
 Amadae, S.M. (2020) “Binary Labels Reinforce Systemic Discrimination”. Noema, November 17 2020. https://www.noemamag.com/binary-labels-reinforce-systemic-discrimination/
 
-Amadae, Sonja M. & Watts, Christopher J. (in preparation) "Red Queen and Red King Effects in Cultural Agent Based Modelling Compared to Evolutionary Replicator Dynamics".
+Amadae, S.M. and Christopher J.  Watts, “Red Queen and Red King Effects in Cultural Agent-Based Modeling:  Hawk Dove Binary and Systemic Discrimination,” Journal of Mathematical Sociology, accepted, in press, Nov. 2021, DOI:  10.1080/0022250X.2021.2012668 .
 
 Axtell, Robert L., Joshua M. Epstein, and H. Peyton Young (2001) "The emergence of
 classes in a multiagent bargaining model." Social dynamics 27: 191-211.
